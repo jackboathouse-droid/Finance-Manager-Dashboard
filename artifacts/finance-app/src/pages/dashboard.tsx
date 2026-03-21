@@ -5,6 +5,7 @@ import {
   useGetCategoryChart,
   useGetSubcategoryChart,
   useGetBudgetVsActual,
+  useGetTransactionPeople,
 } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -57,8 +58,7 @@ const CHART_COLORS = [
   "#84CC16",
 ];
 
-const PEOPLE = ["Total", "Jack", "Naomi"] as const;
-type Person = (typeof PEOPLE)[number];
+const ALL_LABEL = "Total";
 
 function generateMonthOptions() {
   const options: { value: string; label: string }[] = [];
@@ -147,16 +147,19 @@ function DonutChart({
 // ── Person filter pill ────────────────────────────────────────────────────────
 
 function PersonFilter({
+  people,
   value,
   onChange,
 }: {
-  value: Person;
-  onChange: (v: Person) => void;
+  people: string[];
+  value: string;
+  onChange: (v: string) => void;
 }) {
+  const options = [ALL_LABEL, ...people];
   return (
     <div className="flex items-center gap-1.5 bg-muted/50 rounded-xl p-1 border border-border/50">
       <User className="h-3.5 w-3.5 text-muted-foreground ml-1.5" />
-      {PEOPLE.map((p) => (
+      {options.map((p) => (
         <button
           key={p}
           onClick={() => onChange(p)}
@@ -179,10 +182,15 @@ function PersonFilter({
 export default function Dashboard() {
   const currentMonth = format(new Date(), "yyyy-MM");
   const [month, setMonth] = useState(currentMonth);
-  const [person, setPerson] = useState<Person>("Total");
+  const [person, setPerson] = useState<string>(ALL_LABEL);
 
+  // Fetch distinct person names from the database to drive the filter buttons
+  const { data: peopleData = [] } = useGetTransactionPeople();
+
+  // When a person is selected, reset to ALL_LABEL if they disappear from the list
   // Normalise — when "Total" pass undefined so the backend returns all
-  const personParam = person === "Total" ? undefined : person;
+  const personParam =
+    person === ALL_LABEL ? undefined : person || undefined;
 
   const { data: summary, isLoading: loadingSummary } = useGetDashboardSummary({
     month,
@@ -223,8 +231,8 @@ export default function Dashboard() {
         </div>
 
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-          {/* Person filter */}
-          <PersonFilter value={person} onChange={setPerson} />
+          {/* Person filter — driven by distinct person values in the database */}
+          <PersonFilter people={peopleData} value={person} onChange={setPerson} />
 
           {/* Month picker */}
           <div className="flex items-center gap-1.5">
@@ -276,7 +284,7 @@ export default function Dashboard() {
                 <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
                   {loadingSummary ? "—" : formatCurrency(summary?.total_income ?? 0)}
                 </p>
-                {person !== "Total" && (
+                {person !== ALL_LABEL && (
                   <p className="text-xs text-muted-foreground mt-1">{person} only</p>
                 )}
               </div>
@@ -299,7 +307,7 @@ export default function Dashboard() {
                 <p className="text-2xl font-bold text-red-600 dark:text-red-400">
                   {loadingSummary ? "—" : formatCurrency(summary?.total_expenses ?? 0)}
                 </p>
-                {person !== "Total" && (
+                {person !== ALL_LABEL && (
                   <p className="text-xs text-muted-foreground mt-1">{person} only</p>
                 )}
               </div>
@@ -330,7 +338,7 @@ export default function Dashboard() {
                 </p>
                 <p className="text-xs text-white/60 mt-1">
                   {selectedMonthLabel}
-                  {person !== "Total" ? ` · ${person}` : ""}
+                  {person !== ALL_LABEL ? ` · ${person}` : ""}
                 </p>
               </div>
               <div className="h-10 w-10 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
@@ -352,7 +360,7 @@ export default function Dashboard() {
             <div>
               <CardTitle className="text-base font-semibold">Income vs Expenses</CardTitle>
               <CardDescription className="text-xs">
-                Trailing 12 months{person !== "Total" ? ` · ${person}` : ""}
+                Trailing 12 months{person !== ALL_LABEL ? ` · ${person}` : ""}
               </CardDescription>
             </div>
           </div>
@@ -436,7 +444,7 @@ export default function Dashboard() {
           <CardHeader className="pb-2">
             <CardTitle className="text-base font-semibold">Spending by Category</CardTitle>
             <CardDescription className="text-xs">
-              {selectedMonthLabel}{person !== "Total" ? ` · ${person}` : ""}
+              {selectedMonthLabel}{person !== ALL_LABEL ? ` · ${person}` : ""}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -457,7 +465,7 @@ export default function Dashboard() {
           <CardHeader className="pb-2">
             <CardTitle className="text-base font-semibold">Spending by Subcategory</CardTitle>
             <CardDescription className="text-xs">
-              {selectedMonthLabel}{person !== "Total" ? ` · ${person}` : ""}
+              {selectedMonthLabel}{person !== ALL_LABEL ? ` · ${person}` : ""}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -481,7 +489,7 @@ export default function Dashboard() {
             <div>
               <CardTitle className="text-base font-semibold">Budget vs Actual</CardTitle>
               <CardDescription className="text-xs mt-0.5">
-                {selectedMonthLabel}{person !== "Total" ? ` · ${person}` : ""}
+                {selectedMonthLabel}{person !== ALL_LABEL ? ` · ${person}` : ""}
               </CardDescription>
             </div>
           </div>

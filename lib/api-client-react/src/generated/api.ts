@@ -1650,6 +1650,81 @@ export const useCreateTransaction = <
 };
 
 /**
+ * @summary Get distinct person names from transactions
+ */
+export const getGetTransactionPeopleUrl = () => {
+  return `/api/transactions/people`;
+};
+
+export const getTransactionPeople = async (
+  options?: RequestInit,
+): Promise<string[]> => {
+  return customFetch<string[]>(getGetTransactionPeopleUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetTransactionPeopleQueryKey = () => {
+  return [`/api/transactions/people`] as const;
+};
+
+export const getGetTransactionPeopleQueryOptions = <
+  TData = Awaited<ReturnType<typeof getTransactionPeople>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getTransactionPeople>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetTransactionPeopleQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getTransactionPeople>>
+  > = ({ signal }) => getTransactionPeople({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getTransactionPeople>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetTransactionPeopleQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getTransactionPeople>>
+>;
+export type GetTransactionPeopleQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get distinct person names from transactions
+ */
+
+export function useGetTransactionPeople<
+  TData = Awaited<ReturnType<typeof getTransactionPeople>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getTransactionPeople>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetTransactionPeopleQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
  * @summary Import transactions from CSV
  */
 export const getImportTransactionsUrl = () => {

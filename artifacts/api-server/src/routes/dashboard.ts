@@ -28,10 +28,11 @@ function currentMonth() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
-/** Build an optional person filter clause */
+/** Build an optional person filter clause — case-insensitive, whitespace-trimmed */
 function personClause(person?: string) {
-  if (!person || person === "Total") return undefined;
-  return eq(transactionsTable.person, person);
+  const trimmed = person?.trim();
+  if (!trimmed || trimmed.toLowerCase() === "total") return undefined;
+  return sql`LOWER(TRIM(${transactionsTable.person})) = LOWER(TRIM(${trimmed}))`;
 }
 
 // ── Summary ───────────────────────────────────────────────────────────────────

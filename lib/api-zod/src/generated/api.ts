@@ -253,6 +253,14 @@ export const CreateTransactionBody = zod.object({
 });
 
 /**
+ * @summary Get distinct person names from transactions
+ */
+export const GetTransactionPeopleResponseItem = zod.string();
+export const GetTransactionPeopleResponse = zod.array(
+  GetTransactionPeopleResponseItem,
+);
+
+/**
  * @summary Import transactions from CSV
  */
 export const ImportTransactionsBody = zod.object({

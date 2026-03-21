@@ -63,6 +63,24 @@ router.get("/transactions", async (req, res) => {
   }
 });
 
+router.get("/transactions/people", async (req, res) => {
+  try {
+    const results = await db
+      .selectDistinct({ person: sql<string>`TRIM(${transactionsTable.person})` })
+      .from(transactionsTable)
+      .orderBy(sql`TRIM(${transactionsTable.person})`);
+
+    const people = results
+      .map((r) => r.person)
+      .filter((p): p is string => Boolean(p));
+
+    res.json(people);
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Failed to fetch people" });
+  }
+});
+
 router.post("/transactions", async (req, res) => {
   try {
     const body = req.body as {
