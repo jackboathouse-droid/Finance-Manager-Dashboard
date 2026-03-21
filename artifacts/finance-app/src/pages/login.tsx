@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Wallet } from "lucide-react";
+import { BubbleLogo } from "@/components/bubble-logo";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Login() {
@@ -42,13 +42,8 @@ export default function Login() {
       {/* Left side - Login Form */}
       <div className="flex-1 flex flex-col items-center justify-center p-8 bg-background relative z-10">
         <div className="w-full max-w-md animate-in fade-in slide-in-from-bottom-8 duration-700">
-          <div className="flex items-center gap-3 mb-10 justify-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/30">
-              <Wallet className="h-6 w-6" />
-            </div>
-            <span className="font-display text-3xl font-bold tracking-tight text-foreground">
-              Bubble
-            </span>
+          <div className="flex justify-center mb-10">
+            <BubbleLogo size="lg" />
           </div>
 
           <Card className="border-border/50 shadow-xl shadow-black/5 bg-card/50 backdrop-blur-xl">

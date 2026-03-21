@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, ReceiptText, Landmark, Target, Wallet, Tag } from "lucide-react";
+import { LayoutDashboard, ReceiptText, Landmark, Target, Tag } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Sidebar,
@@ -11,6 +11,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { BubbleLogo } from "@/components/bubble-logo";
 
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
@@ -26,13 +27,8 @@ export function AppSidebar() {
   return (
     <Sidebar className="border-r border-border/50 bg-card">
       <SidebarHeader className="p-6">
-        <div className="flex items-center gap-3 px-2">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-sm ring-1 ring-primary/20">
-            <Wallet className="h-5 w-5" />
-          </div>
-          <span className="font-display text-xl font-bold tracking-tight text-foreground">
-            Bubble
-          </span>
+        <div className="px-2">
+          <BubbleLogo size="md" />
         </div>
       </SidebarHeader>
       <SidebarContent className="px-4">
