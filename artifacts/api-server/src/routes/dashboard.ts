@@ -3,20 +3,44 @@ import { db } from "@workspace/db";
 import {
   transactionsTable,
   categoriesTable,
+  subcategoriesTable,
   budgetsTable,
 } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 
 const router: IRouter = Router();
 
+const CHART_COLORS = [
+  "#4FC3F7",
+  "#10B981",
+  "#F59E0B",
+  "#EF4444",
+  "#8B5CF6",
+  "#06B6D4",
+  "#EC4899",
+  "#14B8A6",
+  "#F97316",
+  "#84CC16",
+];
+
 function currentMonth() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
+/** Build an optional person filter clause */
+function personClause(person?: string) {
+  if (!person || person === "Total") return undefined;
+  return eq(transactionsTable.person, person);
+}
+
+// ── Summary ───────────────────────────────────────────────────────────────────
+
 router.get("/dashboard/summary", async (req, res) => {
   try {
     const month = (req.query.month as string) || currentMonth();
+    const person = req.query.person as string | undefined;
+    const pc = personClause(person);
 
     const results = await db
       .select({
@@ -24,7 +48,12 @@ router.get("/dashboard/summary", async (req, res) => {
         total: sql<string>`SUM(${transactionsTable.amount})`,
       })
       .from(transactionsTable)
-      .where(sql`to_char(${transactionsTable.date}, 'YYYY-MM') = ${month}`)
+      .where(
+        and(
+          sql`to_char(${transactionsTable.date}, 'YYYY-MM') = ${month}`,
+          pc
+        )
+      )
       .groupBy(transactionsTable.type);
 
     let total_income = 0;
@@ -36,7 +65,6 @@ router.get("/dashboard/summary", async (req, res) => {
       } else if (row.type === "expense") {
         total_expenses = Math.abs(parseFloat(row.total ?? "0"));
       }
-      // transfers don't count
     }
 
     res.json({
@@ -51,8 +79,13 @@ router.get("/dashboard/summary", async (req, res) => {
   }
 });
 
+// ── Monthly chart ─────────────────────────────────────────────────────────────
+
 router.get("/dashboard/monthly-chart", async (req, res) => {
   try {
+    const person = req.query.person as string | undefined;
+    const pc = personClause(person);
+
     const results = await db
       .select({
         month: sql<string>`to_char(${transactionsTable.date}, 'YYYY-MM')`,
@@ -61,7 +94,10 @@ router.get("/dashboard/monthly-chart", async (req, res) => {
       })
       .from(transactionsTable)
       .where(
-        sql`${transactionsTable.date} >= NOW() - INTERVAL '12 months'`
+        and(
+          sql`${transactionsTable.date} >= NOW() - INTERVAL '12 months'`,
+          pc
+        )
       )
       .groupBy(
         sql`to_char(${transactionsTable.date}, 'YYYY-MM')`,
@@ -93,10 +129,13 @@ router.get("/dashboard/monthly-chart", async (req, res) => {
   }
 });
 
+// ── Category chart ────────────────────────────────────────────────────────────
+
 router.get("/dashboard/category-chart", async (req, res) => {
   try {
     const month = (req.query.month as string) || currentMonth();
-    const colors = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#06B6D4", "#EC4899", "#14B8A6"];
+    const person = req.query.person as string | undefined;
+    const pc = personClause(person);
 
     const results = await db
       .select({
@@ -108,7 +147,8 @@ router.get("/dashboard/category-chart", async (req, res) => {
       .where(
         and(
           sql`to_char(${transactionsTable.date}, 'YYYY-MM') = ${month}`,
-          eq(transactionsTable.type, "expense")
+          eq(transactionsTable.type, "expense"),
+          pc
         )
       )
       .groupBy(categoriesTable.name)
@@ -119,7 +159,7 @@ router.get("/dashboard/category-chart", async (req, res) => {
       .map((r, idx) => ({
         category: r.category as string,
         amount: parseFloat(r.amount ?? "0"),
-        color: colors[idx % colors.length],
+        color: CHART_COLORS[idx % CHART_COLORS.length],
       }));
 
     res.json(chartData);
@@ -129,9 +169,57 @@ router.get("/dashboard/category-chart", async (req, res) => {
   }
 });
 
+// ── Subcategory chart ─────────────────────────────────────────────────────────
+
+router.get("/dashboard/subcategory-chart", async (req, res) => {
+  try {
+    const month = (req.query.month as string) || currentMonth();
+    const person = req.query.person as string | undefined;
+    const pc = personClause(person);
+
+    const results = await db
+      .select({
+        subcategory: subcategoriesTable.name,
+        category: categoriesTable.name,
+        amount: sql<string>`SUM(ABS(${transactionsTable.amount}))`,
+      })
+      .from(transactionsTable)
+      .leftJoin(subcategoriesTable, eq(transactionsTable.subcategory_id, subcategoriesTable.id))
+      .leftJoin(categoriesTable, eq(transactionsTable.category_id, categoriesTable.id))
+      .where(
+        and(
+          sql`to_char(${transactionsTable.date}, 'YYYY-MM') = ${month}`,
+          eq(transactionsTable.type, "expense"),
+          sql`${transactionsTable.subcategory_id} IS NOT NULL`,
+          pc
+        )
+      )
+      .groupBy(subcategoriesTable.name, categoriesTable.name)
+      .orderBy(sql`SUM(ABS(${transactionsTable.amount})) DESC`);
+
+    const chartData = results
+      .filter((r) => r.subcategory)
+      .map((r, idx) => ({
+        subcategory: r.subcategory as string,
+        category: r.category ?? "Uncategorised",
+        amount: parseFloat(r.amount ?? "0"),
+        color: CHART_COLORS[idx % CHART_COLORS.length],
+      }));
+
+    res.json(chartData);
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Failed to fetch subcategory chart" });
+  }
+});
+
+// ── Budget vs actual ──────────────────────────────────────────────────────────
+
 router.get("/dashboard/budget-vs-actual", async (req, res) => {
   try {
     const month = (req.query.month as string) || currentMonth();
+    const person = req.query.person as string | undefined;
+    const pc = personClause(person);
 
     const budgets = await db
       .select({
@@ -157,7 +245,8 @@ router.get("/dashboard/budget-vs-actual", async (req, res) => {
       .where(
         and(
           sql`to_char(${transactionsTable.date}, 'YYYY-MM') = ${month}`,
-          eq(transactionsTable.type, "expense")
+          eq(transactionsTable.type, "expense"),
+          pc
         )
       )
       .groupBy(transactionsTable.category_id);

@@ -208,6 +208,13 @@ export interface CategoryChartPoint {
   color?: string;
 }
 
+export interface SubcategoryChartPoint {
+  subcategory: string;
+  category: string;
+  amount: number;
+  color?: string;
+}
+
 export interface BudgetVsActualPoint {
   category: string;
   budget: number;
@@ -250,12 +257,27 @@ export type GetDashboardSummaryParams = {
    * Month YYYY-MM, defaults to current month
    */
   month?: string;
+  /**
+   * Filter by person name. Omit for all.
+   */
+  person?: string;
+};
+
+export type GetMonthlyChartParams = {
+  person?: string;
 };
 
 export type GetCategoryChartParams = {
   month?: string;
+  person?: string;
+};
+
+export type GetSubcategoryChartParams = {
+  month?: string;
+  person?: string;
 };
 
 export type GetBudgetVsActualParams = {
   month?: string;
+  person?: string;
 };

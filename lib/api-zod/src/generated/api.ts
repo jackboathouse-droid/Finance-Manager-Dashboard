@@ -398,6 +398,7 @@ export const DeleteBudgetResponse = zod.object({
  */
 export const GetDashboardSummaryQueryParams = zod.object({
   month: zod.coerce.string().optional(),
+  person: zod.coerce.string().optional(),
 });
 
 export const GetDashboardSummaryResponse = zod.object({
@@ -410,6 +411,10 @@ export const GetDashboardSummaryResponse = zod.object({
 /**
  * @summary Get monthly income vs expenses for the past 12 months
  */
+export const GetMonthlyChartQueryParams = zod.object({
+  person: zod.coerce.string().optional(),
+});
+
 export const GetMonthlyChartResponseItem = zod.object({
   month: zod.string(),
   income: zod.number(),
@@ -422,6 +427,7 @@ export const GetMonthlyChartResponse = zod.array(GetMonthlyChartResponseItem);
  */
 export const GetCategoryChartQueryParams = zod.object({
   month: zod.coerce.string().optional(),
+  person: zod.coerce.string().optional(),
 });
 
 export const GetCategoryChartResponseItem = zod.object({
@@ -432,10 +438,29 @@ export const GetCategoryChartResponseItem = zod.object({
 export const GetCategoryChartResponse = zod.array(GetCategoryChartResponseItem);
 
 /**
+ * @summary Get spending by subcategory for a given month
+ */
+export const GetSubcategoryChartQueryParams = zod.object({
+  month: zod.coerce.string().optional(),
+  person: zod.coerce.string().optional(),
+});
+
+export const GetSubcategoryChartResponseItem = zod.object({
+  subcategory: zod.string(),
+  category: zod.string(),
+  amount: zod.number(),
+  color: zod.string().optional(),
+});
+export const GetSubcategoryChartResponse = zod.array(
+  GetSubcategoryChartResponseItem,
+);
+
+/**
  * @summary Get budget vs actual spending by category for a given month
  */
 export const GetBudgetVsActualQueryParams = zod.object({
   month: zod.coerce.string().optional(),
+  person: zod.coerce.string().optional(),
 });
 
 export const GetBudgetVsActualResponseItem = zod.object({

@@ -578,6 +578,12 @@ paths:
           schema:
             type: string
             description: "Month YYYY-MM, defaults to current month"
+        - name: person
+          in: query
+          required: false
+          schema:
+            type: string
+            description: "Filter by person name. Omit for all."
       responses:
         "200":
           description: Dashboard summary
@@ -591,6 +597,12 @@ paths:
       operationId: getMonthlyChart
       tags: [dashboard]
       summary: Get monthly income vs expenses for the past 12 months
+      parameters:
+        - name: person
+          in: query
+          required: false
+          schema:
+            type: string
       responses:
         "200":
           description: Monthly chart data
@@ -612,6 +624,11 @@ paths:
           required: false
           schema:
             type: string
+        - name: person
+          in: query
+          required: false
+          schema:
+            type: string
       responses:
         "200":
           description: Category chart data
@@ -622,6 +639,32 @@ paths:
                 items:
                   $ref: "#/components/schemas/CategoryChartPoint"
 
+  /dashboard/subcategory-chart:
+    get:
+      operationId: getSubcategoryChart
+      tags: [dashboard]
+      summary: Get spending by subcategory for a given month
+      parameters:
+        - name: month
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: person
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Subcategory chart data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SubcategoryChartPoint"
+
   /dashboard/budget-vs-actual:
     get:
       operationId: getBudgetVsActual
@@ -629,6 +672,11 @@ paths:
       summary: Get budget vs actual spending by category for a given month
       parameters:
         - name: month
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: person
           in: query
           required: false
           schema:
@@ -979,6 +1027,22 @@ components:
         color:
           type: string
       required:
+        - category
+        - amount
+
+    SubcategoryChartPoint:
+      type: object
+      properties:
+        subcategory:
+          type: string
+        category:
+          type: string
+        amount:
+          type: number
+        color:
+          type: string
+      required:
+        - subcategory
         - category
         - amount
 

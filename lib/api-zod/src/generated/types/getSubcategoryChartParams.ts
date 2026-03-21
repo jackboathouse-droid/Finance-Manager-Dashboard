@@ -6,13 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type GetDashboardSummaryParams = {
-  /**
-   * Month YYYY-MM, defaults to current month
-   */
+export type GetSubcategoryChartParams = {
   month?: string;
-  /**
-   * Filter by person name. Omit for all.
-   */
   person?: string;
 };

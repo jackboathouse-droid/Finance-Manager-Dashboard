@@ -6,7 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type GetBudgetVsActualParams = {
-  month?: string;
-  person?: string;
-};
+export interface SubcategoryChartPoint {
+  subcategory: string;
+  category: string;
+  amount: number;
+  color?: string;
+}

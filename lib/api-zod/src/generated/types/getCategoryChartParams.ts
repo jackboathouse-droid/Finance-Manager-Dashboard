@@ -8,4 +8,5 @@
 
 export type GetCategoryChartParams = {
   month?: string;
+  person?: string;
 };

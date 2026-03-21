@@ -33,7 +33,9 @@ import type {
   GetBudgetsParams,
   GetCategoryChartParams,
   GetDashboardSummaryParams,
+  GetMonthlyChartParams,
   GetSubcategoriesParams,
+  GetSubcategoryChartParams,
   GetTransactionsParams,
   HealthStatus,
   ImportResult,
@@ -43,6 +45,7 @@ import type {
   MessageResponse,
   MonthlyChartPoint,
   Subcategory,
+  SubcategoryChartPoint,
   Transaction,
   User,
 } from "./api.schemas";
@@ -2445,41 +2448,57 @@ export function useGetDashboardSummary<
 /**
  * @summary Get monthly income vs expenses for the past 12 months
  */
-export const getGetMonthlyChartUrl = () => {
-  return `/api/dashboard/monthly-chart`;
+export const getGetMonthlyChartUrl = (params?: GetMonthlyChartParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/dashboard/monthly-chart?${stringifiedParams}`
+    : `/api/dashboard/monthly-chart`;
 };
 
 export const getMonthlyChart = async (
+  params?: GetMonthlyChartParams,
   options?: RequestInit,
 ): Promise<MonthlyChartPoint[]> => {
-  return customFetch<MonthlyChartPoint[]>(getGetMonthlyChartUrl(), {
+  return customFetch<MonthlyChartPoint[]>(getGetMonthlyChartUrl(params), {
     ...options,
     method: "GET",
   });
 };
 
-export const getGetMonthlyChartQueryKey = () => {
-  return [`/api/dashboard/monthly-chart`] as const;
+export const getGetMonthlyChartQueryKey = (params?: GetMonthlyChartParams) => {
+  return [`/api/dashboard/monthly-chart`, ...(params ? [params] : [])] as const;
 };
 
 export const getGetMonthlyChartQueryOptions = <
   TData = Awaited<ReturnType<typeof getMonthlyChart>>,
   TError = ErrorType<unknown>,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof getMonthlyChart>>,
-    TError,
-    TData
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}) => {
+>(
+  params?: GetMonthlyChartParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMonthlyChart>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getGetMonthlyChartQueryKey();
+  const queryKey = queryOptions?.queryKey ?? getGetMonthlyChartQueryKey(params);
 
   const queryFn: QueryFunction<Awaited<ReturnType<typeof getMonthlyChart>>> = ({
     signal,
-  }) => getMonthlyChart({ signal, ...requestOptions });
+  }) => getMonthlyChart(params, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof getMonthlyChart>>,
@@ -2500,15 +2519,18 @@ export type GetMonthlyChartQueryError = ErrorType<unknown>;
 export function useGetMonthlyChart<
   TData = Awaited<ReturnType<typeof getMonthlyChart>>,
   TError = ErrorType<unknown>,
->(options?: {
-  query?: UseQueryOptions<
-    Awaited<ReturnType<typeof getMonthlyChart>>,
-    TError,
-    TData
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetMonthlyChartQueryOptions(options);
+>(
+  params?: GetMonthlyChartParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMonthlyChart>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMonthlyChartQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
@@ -2609,6 +2631,112 @@ export function useGetCategoryChart<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetCategoryChartQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get spending by subcategory for a given month
+ */
+export const getGetSubcategoryChartUrl = (
+  params?: GetSubcategoryChartParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/dashboard/subcategory-chart?${stringifiedParams}`
+    : `/api/dashboard/subcategory-chart`;
+};
+
+export const getSubcategoryChart = async (
+  params?: GetSubcategoryChartParams,
+  options?: RequestInit,
+): Promise<SubcategoryChartPoint[]> => {
+  return customFetch<SubcategoryChartPoint[]>(
+    getGetSubcategoryChartUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetSubcategoryChartQueryKey = (
+  params?: GetSubcategoryChartParams,
+) => {
+  return [
+    `/api/dashboard/subcategory-chart`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetSubcategoryChartQueryOptions = <
+  TData = Awaited<ReturnType<typeof getSubcategoryChart>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetSubcategoryChartParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSubcategoryChart>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetSubcategoryChartQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getSubcategoryChart>>
+  > = ({ signal }) =>
+    getSubcategoryChart(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSubcategoryChart>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetSubcategoryChartQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getSubcategoryChart>>
+>;
+export type GetSubcategoryChartQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get spending by subcategory for a given month
+ */
+
+export function useGetSubcategoryChart<
+  TData = Awaited<ReturnType<typeof getSubcategoryChart>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetSubcategoryChartParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSubcategoryChart>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetSubcategoryChartQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
