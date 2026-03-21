@@ -47,7 +47,7 @@ export default function Login() {
               <Wallet className="h-6 w-6" />
             </div>
             <span className="font-display text-3xl font-bold tracking-tight text-foreground">
-              ClearFlow
+              Bubble
             </span>
           </div>
 

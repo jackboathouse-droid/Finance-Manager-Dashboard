@@ -31,7 +31,7 @@ export function AppSidebar() {
             <Wallet className="h-5 w-5" />
           </div>
           <span className="font-display text-xl font-bold tracking-tight text-foreground">
-            ClearFlow
+            Bubble
           </span>
         </div>
       </SidebarHeader>
