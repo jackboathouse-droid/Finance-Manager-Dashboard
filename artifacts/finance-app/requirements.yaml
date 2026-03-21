@@ -1,0 +1,18 @@
+packages:
+  "recharts": "Powerful, responsive charts for the financial dashboard"
+  "date-fns": "For formatting dates in transaction tables and charts"
+  "papaparse": "For parsing CSV files locally before sending to the import endpoint"
+  "@types/papaparse": "TypeScript definitions for PapaParse"
+
+images:
+  - path: "artifacts/finance-app/public/images/login-bg.png"
+    description: "Abstract minimal geometric background with soft glowing curves in deep indigo and teal, representing modern fintech data flow, high quality, 4k"
+    aspect_ratio: "16:9"
+  - path: "artifacts/finance-app/public/images/empty-state.png"
+    description: "A clean, modern 3D illustration of an empty wallet or floating coin, soft lighting, minimal style, transparent background"
+    aspect_ratio: "1:1"
+
+notes:
+  - Using @workspace/api-client-react for all data fetching and mutations
+  - Wouter for routing without nested <a> tags
+  - Context used for global authentication state synced with /api/auth/me
