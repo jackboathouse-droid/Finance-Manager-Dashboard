@@ -1,177 +1,480 @@
 import { useState } from "react";
-import { 
-  useGetDashboardSummary, 
-  useGetMonthlyChart, 
-  useGetCategoryChart, 
-  useGetBudgetVsActual 
+import {
+  useGetDashboardSummary,
+  useGetMonthlyChart,
+  useGetCategoryChart,
+  useGetBudgetVsActual,
 } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { format } from "date-fns";
-import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, BarChart, Bar, Legend
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { format, subMonths, addMonths } from "date-fns";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  BarChart,
+  Bar,
+  Legend,
 } from "recharts";
-import { ArrowDownRight, ArrowUpRight, Wallet } from "lucide-react";
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  Wallet,
+  TrendingUp,
+  TrendingDown,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
+
+const CHART_COLORS = [
+  "#3B82F6",
+  "#10B981",
+  "#F59E0B",
+  "#EF4444",
+  "#8B5CF6",
+  "#06B6D4",
+  "#EC4899",
+];
+
+function generateMonthOptions() {
+  const options: { value: string; label: string }[] = [];
+  const now = new Date();
+  for (let i = 11; i >= 0; i--) {
+    const d = subMonths(now, i);
+    options.push({
+      value: format(d, "yyyy-MM"),
+      label: format(d, "MMMM yyyy"),
+    });
+  }
+  return options;
+}
+
+const monthOptions = generateMonthOptions();
 
 export default function Dashboard() {
-  const currentMonth = format(new Date(), 'yyyy-MM');
-  const [month] = useState(currentMonth);
+  const currentMonth = format(new Date(), "yyyy-MM");
+  const [month, setMonth] = useState(currentMonth);
 
   const { data: summary, isLoading: loadingSummary } = useGetDashboardSummary({ month });
   const { data: monthlyData } = useGetMonthlyChart();
   const { data: categoryData } = useGetCategoryChart({ month });
   const { data: budgetData } = useGetBudgetVsActual({ month });
 
-  const COLORS = ['hsl(var(--chart-1))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))', 'hsl(var(--chart-4))', 'hsl(var(--chart-5))'];
+  const selectedMonthLabel =
+    monthOptions.find((m) => m.value === month)?.label ?? format(new Date(), "MMMM yyyy");
 
-  if (loadingSummary) {
-    return <div className="flex h-full items-center justify-center p-8">Loading dashboard...</div>;
-  }
+  const netFlow = summary?.net_cash_flow ?? 0;
+  const isPositive = netFlow >= 0;
+
+  const navigateMonth = (dir: "prev" | "next") => {
+    const idx = monthOptions.findIndex((m) => m.value === month);
+    if (dir === "prev" && idx > 0) setMonth(monthOptions[idx - 1].value);
+    if (dir === "next" && idx < monthOptions.length - 1) setMonth(monthOptions[idx + 1].value);
+  };
 
   return (
-    <div className="space-y-8 pb-8">
-      <div>
-        <h1 className="text-3xl font-display font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground mt-1">Overview for {format(new Date(), 'MMMM yyyy')}</p>
+    <div className="space-y-6 pb-8">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-muted-foreground mt-1 text-sm">Your financial overview</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-9 w-9"
+            onClick={() => navigateMonth("prev")}
+            disabled={monthOptions[0]?.value === month}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Select value={month} onValueChange={setMonth}>
+            <SelectTrigger className="w-[160px] h-9 bg-card">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {monthOptions.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-9 w-9"
+            onClick={() => navigateMonth("next")}
+            disabled={monthOptions[monthOptions.length - 1]?.value === month}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card className="bg-card border-border/50 shadow-sm hover:shadow-md transition-shadow">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Income</CardTitle>
-            <div className="h-8 w-8 rounded-full bg-success/10 flex items-center justify-center">
-              <ArrowUpRight className="h-4 w-4 text-success" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-success">
-              {formatCurrency(summary?.total_income || 0)}
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card className="bg-card border-border/50 shadow-sm hover:shadow-md transition-shadow">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Expenses</CardTitle>
-            <div className="h-8 w-8 rounded-full bg-destructive/10 flex items-center justify-center">
-              <ArrowDownRight className="h-4 w-4 text-destructive" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-destructive">
-              {formatCurrency(summary?.total_expenses || 0)}
+      {/* Summary Cards */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        {/* Income */}
+        <Card className="relative overflow-hidden border-border/50 shadow-sm">
+          <div className="absolute inset-0 bg-gradient-to-br from-emerald-50/60 to-transparent dark:from-emerald-950/20" />
+          <CardContent className="relative pt-6 pb-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                  Total Income
+                </p>
+                <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                  {loadingSummary ? "—" : formatCurrency(summary?.total_income ?? 0)}
+                </p>
+              </div>
+              <div className="h-10 w-10 rounded-xl bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center flex-shrink-0">
+                <ArrowUpRight className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-primary border-primary-border shadow-md text-primary-foreground">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-primary-foreground/80">Net Cash Flow</CardTitle>
-            <div className="h-8 w-8 rounded-full bg-white/20 flex items-center justify-center">
-              <Wallet className="h-4 w-4 text-white" />
+        {/* Expenses */}
+        <Card className="relative overflow-hidden border-border/50 shadow-sm">
+          <div className="absolute inset-0 bg-gradient-to-br from-red-50/60 to-transparent dark:from-red-950/20" />
+          <CardContent className="relative pt-6 pb-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                  Total Expenses
+                </p>
+                <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+                  {loadingSummary ? "—" : formatCurrency(summary?.total_expenses ?? 0)}
+                </p>
+              </div>
+              <div className="h-10 w-10 rounded-xl bg-red-100 dark:bg-red-900/40 flex items-center justify-center flex-shrink-0">
+                <ArrowDownRight className="h-5 w-5 text-red-600 dark:text-red-400" />
+              </div>
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {formatCurrency(summary?.net_cash_flow || 0)}
+          </CardContent>
+        </Card>
+
+        {/* Net Cash Flow */}
+        <Card
+          className={cn(
+            "relative overflow-hidden border-border/50 shadow-sm",
+            isPositive
+              ? "bg-gradient-to-br from-blue-600 to-blue-700"
+              : "bg-gradient-to-br from-slate-700 to-slate-800"
+          )}
+        >
+          <CardContent className="relative pt-6 pb-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-white/70 mb-2">
+                  Net Cash Flow
+                </p>
+                <p className="text-2xl font-bold text-white">
+                  {loadingSummary ? "—" : formatCurrency(netFlow)}
+                </p>
+                <p className="text-xs text-white/60 mt-1">{selectedMonthLabel}</p>
+              </div>
+              <div className="h-10 w-10 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                {isPositive ? (
+                  <TrendingUp className="h-5 w-5 text-white" />
+                ) : (
+                  <TrendingDown className="h-5 w-5 text-white" />
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-7">
+      {/* Charts Row */}
+      <div className="grid gap-5 lg:grid-cols-7">
+        {/* Monthly Line Chart */}
         <Card className="lg:col-span-4 border-border/50 shadow-sm">
-          <CardHeader>
-            <CardTitle>Income vs Expenses</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold">Income vs Expenses</CardTitle>
+            <CardDescription className="text-xs">Trailing 12 months</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-[300px] w-full">
+            <div className="h-[260px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={monthlyData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                  <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `$${val}`} />
-                  <RechartsTooltip 
-                    contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '8px' }}
-                    formatter={(value: number) => formatCurrency(value)}
+                <LineChart
+                  data={monthlyData}
+                  margin={{ top: 5, right: 10, bottom: 5, left: 0 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    vertical={false}
+                    stroke="hsl(var(--border))"
                   />
-                  <Legend />
-                  <Line type="monotone" dataKey="income" name="Income" stroke="hsl(var(--success))" strokeWidth={3} dot={false} activeDot={{ r: 6 }} />
-                  <Line type="monotone" dataKey="expenses" name="Expenses" stroke="hsl(var(--destructive))" strokeWidth={3} dot={false} activeDot={{ r: 6 }} />
+                  <XAxis
+                    dataKey="month"
+                    stroke="hsl(var(--muted-foreground))"
+                    fontSize={11}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(val) => {
+                      const [y, m] = val.split("-");
+                      return format(new Date(parseInt(y), parseInt(m) - 1), "MMM");
+                    }}
+                  />
+                  <YAxis
+                    stroke="hsl(var(--muted-foreground))"
+                    fontSize={11}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(val) => `$${(val / 1000).toFixed(0)}k`}
+                    width={45}
+                  />
+                  <RechartsTooltip
+                    contentStyle={{
+                      backgroundColor: "hsl(var(--card))",
+                      borderColor: "hsl(var(--border))",
+                      borderRadius: "8px",
+                      fontSize: "12px",
+                    }}
+                    formatter={(value: number, name: string) => [
+                      formatCurrency(value),
+                      name.charAt(0).toUpperCase() + name.slice(1),
+                    ]}
+                  />
+                  <Legend
+                    iconType="circle"
+                    iconSize={8}
+                    wrapperStyle={{ fontSize: "12px", paddingTop: "12px" }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="income"
+                    name="Income"
+                    stroke="#10B981"
+                    strokeWidth={2.5}
+                    dot={false}
+                    activeDot={{ r: 5, strokeWidth: 0 }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="expenses"
+                    name="Expenses"
+                    stroke="#EF4444"
+                    strokeWidth={2.5}
+                    dot={false}
+                    activeDot={{ r: 5, strokeWidth: 0 }}
+                  />
                 </LineChart>
               </ResponsiveContainer>
             </div>
           </CardContent>
         </Card>
 
+        {/* Category Pie */}
         <Card className="lg:col-span-3 border-border/50 shadow-sm">
-          <CardHeader>
-            <CardTitle>Spending by Category</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold">Spending by Category</CardTitle>
+            <CardDescription className="text-xs">{selectedMonthLabel}</CardDescription>
           </CardHeader>
           <CardContent>
             {categoryData && categoryData.length > 0 ? (
-              <div className="h-[300px] w-full">
+              <div className="h-[260px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
                       data={categoryData}
                       cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={100}
-                      paddingAngle={2}
+                      cy="45%"
+                      innerRadius={55}
+                      outerRadius={90}
+                      paddingAngle={3}
                       dataKey="amount"
                       nameKey="category"
                     >
                       {categoryData.map((_, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={CHART_COLORS[index % CHART_COLORS.length]}
+                          strokeWidth={0}
+                        />
                       ))}
                     </Pie>
-                    <RechartsTooltip 
-                      contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '8px' }}
-                      formatter={(value: number) => formatCurrency(value)}
+                    <RechartsTooltip
+                      contentStyle={{
+                        backgroundColor: "hsl(var(--card))",
+                        borderColor: "hsl(var(--border))",
+                        borderRadius: "8px",
+                        fontSize: "12px",
+                      }}
+                      formatter={(value: number, name: string) => [formatCurrency(value), name]}
                     />
-                    <Legend layout="horizontal" verticalAlign="bottom" align="center" />
+                    <Legend
+                      iconType="circle"
+                      iconSize={8}
+                      wrapperStyle={{ fontSize: "12px", paddingTop: "8px" }}
+                      formatter={(value) =>
+                        value.length > 16 ? value.slice(0, 14) + "…" : value
+                      }
+                    />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
             ) : (
-              <div className="h-[300px] flex flex-col items-center justify-center text-muted-foreground text-sm">
-                <img src={`${import.meta.env.BASE_URL}images/empty-state.png`} alt="Empty" className="w-24 h-24 mb-4 opacity-50" />
-                <p>No expenses this month</p>
+              <div className="h-[260px] flex flex-col items-center justify-center text-muted-foreground">
+                <img
+                  src={`${import.meta.env.BASE_URL}images/empty-state.png`}
+                  alt="Empty"
+                  className="w-20 h-20 mb-3 opacity-40"
+                />
+                <p className="text-sm font-medium">No expenses this month</p>
               </div>
             )}
           </CardContent>
         </Card>
       </div>
 
+      {/* Budget vs Actual */}
       <Card className="border-border/50 shadow-sm">
-        <CardHeader>
-          <CardTitle>Budget vs Actual</CardTitle>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base font-semibold">Budget vs Actual</CardTitle>
+              <CardDescription className="text-xs mt-0.5">{selectedMonthLabel}</CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {budgetData && budgetData.length > 0 ? (
-            <div className="h-[350px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={budgetData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                  <XAxis dataKey="category" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => `$${val}`} />
-                  <RechartsTooltip
-                    contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '8px' }}
-                    formatter={(value: number) => formatCurrency(value)}
-                    cursor={{ fill: 'hsl(var(--muted)/0.5)' }}
-                  />
-                  <Legend />
-                  <Bar dataKey="budget" name="Budget" fill="hsl(var(--primary)/0.3)" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="actual" name="Actual Spending" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            <>
+              <div className="h-[280px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={budgetData}
+                    margin={{ top: 5, right: 10, left: 0, bottom: 5 }}
+                    barCategoryGap="30%"
+                    barGap={4}
+                  >
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      vertical={false}
+                      stroke="hsl(var(--border))"
+                    />
+                    <XAxis
+                      dataKey="category"
+                      stroke="hsl(var(--muted-foreground))"
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <YAxis
+                      stroke="hsl(var(--muted-foreground))"
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                      tickFormatter={(val) => `$${val}`}
+                      width={55}
+                    />
+                    <RechartsTooltip
+                      contentStyle={{
+                        backgroundColor: "hsl(var(--card))",
+                        borderColor: "hsl(var(--border))",
+                        borderRadius: "8px",
+                        fontSize: "12px",
+                      }}
+                      formatter={(value: number, name: string) => [formatCurrency(value), name]}
+                      cursor={{ fill: "hsl(var(--muted)/0.4)" }}
+                    />
+                    <Legend
+                      iconType="square"
+                      iconSize={10}
+                      wrapperStyle={{ fontSize: "12px", paddingTop: "12px" }}
+                    />
+                    <Bar
+                      dataKey="budget"
+                      name="Budget"
+                      fill="#3B82F6"
+                      fillOpacity={0.25}
+                      radius={[4, 4, 0, 0]}
+                    />
+                    <Bar
+                      dataKey="actual"
+                      name="Actual"
+                      fill="#3B82F6"
+                      radius={[4, 4, 0, 0]}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Variance table */}
+              <div className="mt-4 border border-border/50 rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-muted/40 border-b border-border/50">
+                      <th className="text-left px-4 py-2.5 font-semibold text-xs text-muted-foreground uppercase tracking-wider">
+                        Category
+                      </th>
+                      <th className="text-right px-4 py-2.5 font-semibold text-xs text-muted-foreground uppercase tracking-wider">
+                        Budget
+                      </th>
+                      <th className="text-right px-4 py-2.5 font-semibold text-xs text-muted-foreground uppercase tracking-wider">
+                        Actual
+                      </th>
+                      <th className="text-right px-4 py-2.5 font-semibold text-xs text-muted-foreground uppercase tracking-wider">
+                        Variance
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {budgetData.map((row, i) => {
+                      const under = row.variance >= 0;
+                      return (
+                        <tr
+                          key={i}
+                          className="border-b border-border/30 last:border-0 hover:bg-muted/20"
+                        >
+                          <td className="px-4 py-2.5 font-medium">{row.category}</td>
+                          <td className="px-4 py-2.5 text-right text-muted-foreground">
+                            {formatCurrency(row.budget)}
+                          </td>
+                          <td className="px-4 py-2.5 text-right">{formatCurrency(row.actual)}</td>
+                          <td
+                            className={cn(
+                              "px-4 py-2.5 text-right font-semibold",
+                              under ? "text-emerald-600" : "text-red-500"
+                            )}
+                          >
+                            {under ? "+" : ""}
+                            {formatCurrency(row.variance)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
           ) : (
             <div className="py-12 flex flex-col items-center justify-center text-muted-foreground">
-              <p>No budgets set for this month.</p>
+              <Wallet className="h-10 w-10 mb-3 opacity-30" />
+              <p className="text-sm font-medium">No budgets set for {selectedMonthLabel}</p>
+              <p className="text-xs mt-1 opacity-70">
+                Go to the Budget page to add budget targets.
+              </p>
             </div>
           )}
         </CardContent>

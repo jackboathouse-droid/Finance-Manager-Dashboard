@@ -23,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
 const formSchema = z.object({
   date: z.string().min(1, "Date is required"),
@@ -30,12 +31,18 @@ const formSchema = z.object({
   account_id: z.coerce.number().min(1, "Account is required"),
   category_id: z.coerce.number().optional().nullable(),
   subcategory_id: z.coerce.number().optional().nullable(),
-  amount: z.coerce.number(),
+  amount: z.coerce.number().min(0.01, "Amount must be greater than 0"),
   person: z.string().min(1, "Person/Payee is required"),
   type: z.enum(["income", "expense", "transfer"]),
 });
 
 type FormValues = z.infer<typeof formSchema>;
+
+const TYPE_STYLES: Record<string, string> = {
+  expense: "border-red-200 bg-red-50/50 dark:border-red-900/50 dark:bg-red-950/20",
+  income: "border-emerald-200 bg-emerald-50/50 dark:border-emerald-900/50 dark:bg-emerald-950/20",
+  transfer: "border-blue-200 bg-blue-50/50 dark:border-blue-900/50 dark:bg-blue-950/20",
+};
 
 export function TransactionForm({
   transaction,
@@ -46,24 +53,24 @@ export function TransactionForm({
 }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  
+
   const createMutation = useCreateTransaction();
   const updateMutation = useUpdateTransaction();
 
   const { data: accounts } = useGetAccounts();
   const { data: categories } = useGetCategories();
-  
+
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       date: transaction?.date || new Date().toISOString().split("T")[0],
       description: transaction?.description || "",
       account_id: transaction?.account_id || 0,
-      category_id: transaction?.category_id || 0,
-      subcategory_id: transaction?.subcategory_id || 0,
-      amount: transaction ? Math.abs(transaction.amount) : 0,
+      category_id: transaction?.category_id || null,
+      subcategory_id: transaction?.subcategory_id || null,
+      amount: transaction ? Math.abs(transaction.amount) : undefined,
       person: transaction?.person || "",
-      type: transaction?.type || "expense",
+      type: (transaction?.type as "income" | "expense" | "transfer") || "expense",
     },
   });
 
@@ -71,19 +78,28 @@ export function TransactionForm({
   const type = form.watch("type");
 
   const { data: subcategories } = useGetSubcategories(
-    { category_id: selectedCategory || undefined },
-    { query: { enabled: !!selectedCategory } }
+    { category_id: selectedCategory ?? undefined },
+    { query: { enabled: !!selectedCategory && selectedCategory > 0 } }
   );
 
-  // Filter categories by selected type
-  const filteredCategories = categories?.filter((c) => c.type === type);
+  // Reset subcategory when category changes
+  useEffect(() => {
+    form.setValue("subcategory_id", null);
+  }, [selectedCategory]);
+
+  // Reset category + subcategory when type changes
+  useEffect(() => {
+    form.setValue("category_id", null);
+    form.setValue("subcategory_id", null);
+  }, [type]);
+
+  const filteredCategories = categories?.filter((c) =>
+    type === "transfer" ? false : c.type === type
+  );
 
   const onSubmit = (values: FormValues) => {
-    // Process amount to be negative for expenses
     let finalAmount = Math.abs(values.amount);
-    if (values.type === "expense") {
-      finalAmount = -finalAmount;
-    }
+    if (values.type === "expense") finalAmount = -finalAmount;
 
     const payload = {
       ...values,
@@ -100,6 +116,7 @@ export function TransactionForm({
           onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
             queryClient.invalidateQueries({ queryKey: ["/api/dashboard/summary"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/accounts"] });
             toast({ title: "Transaction updated" });
             onSuccess();
           },
@@ -112,6 +129,7 @@ export function TransactionForm({
           onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
             queryClient.invalidateQueries({ queryKey: ["/api/dashboard/summary"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/accounts"] });
             toast({ title: "Transaction created" });
             onSuccess();
           },
@@ -123,103 +141,122 @@ export function TransactionForm({
   const isPending = createMutation.isPending || updateMutation.isPending;
 
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+      {/* Type selector — full-width pill tabs */}
+      <div className="flex rounded-lg border border-border overflow-hidden text-sm font-medium">
+        {(["expense", "income", "transfer"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => form.setValue("type", t)}
+            className={cn(
+              "flex-1 py-2.5 capitalize transition-colors",
+              form.watch("type") === t
+                ? t === "expense"
+                  ? "bg-red-500 text-white"
+                  : t === "income"
+                    ? "bg-emerald-500 text-white"
+                    : "bg-blue-500 text-white"
+                : "bg-muted/40 text-muted-foreground hover:bg-muted/70"
+            )}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {/* Date + Amount */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="date">Date</Label>
-          <Input id="date" type="date" {...form.register("date")} />
+        <div className="space-y-1.5">
+          <Label htmlFor="date" className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Date</Label>
+          <Input id="date" type="date" className="h-10" {...form.register("date")} />
           {form.formState.errors.date && (
-            <p className="text-sm text-destructive">{form.formState.errors.date.message}</p>
+            <p className="text-xs text-destructive">{form.formState.errors.date.message}</p>
           )}
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="type">Type</Label>
+        <div className="space-y-1.5">
+          <Label htmlFor="amount" className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Amount</Label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+            <Input
+              id="amount"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="0.00"
+              className="h-10 pl-7"
+              {...form.register("amount")}
+            />
+          </div>
+          {form.formState.errors.amount && (
+            <p className="text-xs text-destructive">{form.formState.errors.amount.message}</p>
+          )}
+        </div>
+      </div>
+
+      {/* Description */}
+      <div className="space-y-1.5">
+        <Label htmlFor="description" className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Description</Label>
+        <Input
+          id="description"
+          placeholder="e.g. Grocery run at Whole Foods"
+          className="h-10"
+          {...form.register("description")}
+        />
+        {form.formState.errors.description && (
+          <p className="text-xs text-destructive">{form.formState.errors.description.message}</p>
+        )}
+      </div>
+
+      {/* Account + Person */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="account" className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Account</Label>
           <Select
-            value={form.watch("type")}
-            onValueChange={(val: any) => {
-              form.setValue("type", val);
-              form.setValue("category_id", 0);
-              form.setValue("subcategory_id", 0);
-            }}
+            value={form.watch("account_id")?.toString() || ""}
+            onValueChange={(val) => form.setValue("account_id", parseInt(val))}
           >
-            <SelectTrigger id="type">
-              <SelectValue placeholder="Select type" />
+            <SelectTrigger id="account" className="h-10">
+              <SelectValue placeholder="Select account" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="expense">Expense</SelectItem>
-              <SelectItem value="income">Income</SelectItem>
-              <SelectItem value="transfer">Transfer</SelectItem>
+              {accounts?.map((acc) => (
+                <SelectItem key={acc.id} value={acc.id.toString()}>
+                  {acc.name}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
+          {form.formState.errors.account_id && (
+            <p className="text-xs text-destructive">{form.formState.errors.account_id.message}</p>
+          )}
         </div>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="description">Description</Label>
-        <Input id="description" placeholder="Grocery run..." {...form.register("description")} />
-        {form.formState.errors.description && (
-          <p className="text-sm text-destructive">{form.formState.errors.description.message}</p>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="amount">Amount</Label>
+        <div className="space-y-1.5">
+          <Label htmlFor="person" className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Person</Label>
           <Input
-            id="amount"
-            type="number"
-            step="0.01"
-            min="0"
-            placeholder="0.00"
-            {...form.register("amount")}
+            id="person"
+            placeholder="e.g. John"
+            className="h-10"
+            {...form.register("person")}
           />
-          {form.formState.errors.amount && (
-            <p className="text-sm text-destructive">{form.formState.errors.amount.message}</p>
-          )}
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="person">Person / Payee</Label>
-          <Input id="person" placeholder="Whole Foods" {...form.register("person")} />
           {form.formState.errors.person && (
-            <p className="text-sm text-destructive">{form.formState.errors.person.message}</p>
+            <p className="text-xs text-destructive">{form.formState.errors.person.message}</p>
           )}
         </div>
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="account">Account</Label>
-        <Select
-          value={form.watch("account_id")?.toString()}
-          onValueChange={(val) => form.setValue("account_id", parseInt(val))}
-        >
-          <SelectTrigger id="account">
-            <SelectValue placeholder="Select account" />
-          </SelectTrigger>
-          <SelectContent>
-            {accounts?.map((acc) => (
-              <SelectItem key={acc.id} value={acc.id.toString()}>
-                {acc.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {form.formState.errors.account_id && (
-          <p className="text-sm text-destructive">{form.formState.errors.account_id.message}</p>
-        )}
-      </div>
-
+      {/* Category + Subcategory — hidden for transfers */}
       {type !== "transfer" && (
         <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="category">Category</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="category" className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Category</Label>
             <Select
-              value={form.watch("category_id")?.toString()}
+              value={form.watch("category_id")?.toString() || ""}
               onValueChange={(val) => {
                 form.setValue("category_id", parseInt(val));
-                form.setValue("subcategory_id", 0);
               }}
             >
-              <SelectTrigger id="category">
+              <SelectTrigger id="category" className="h-10">
                 <SelectValue placeholder="Select category" />
               </SelectTrigger>
               <SelectContent>
@@ -231,15 +268,25 @@ export function TransactionForm({
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="subcategory">Subcategory</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="subcategory" className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              Subcategory
+            </Label>
             <Select
-              value={form.watch("subcategory_id")?.toString()}
+              value={form.watch("subcategory_id")?.toString() || ""}
               onValueChange={(val) => form.setValue("subcategory_id", parseInt(val))}
               disabled={!selectedCategory || !subcategories?.length}
             >
-              <SelectTrigger id="subcategory">
-                <SelectValue placeholder="Select subcategory" />
+              <SelectTrigger id="subcategory" className="h-10">
+                <SelectValue
+                  placeholder={
+                    !selectedCategory
+                      ? "Pick a category first"
+                      : subcategories?.length
+                        ? "Select subcategory"
+                        : "No subcategories"
+                  }
+                />
               </SelectTrigger>
               <SelectContent>
                 {subcategories?.map((sub) => (
@@ -253,17 +300,13 @@ export function TransactionForm({
         </div>
       )}
 
-      <div className="flex justify-end gap-3 pt-4">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={onSuccess}
-          disabled={isPending}
-        >
+      {/* Footer actions */}
+      <div className="flex justify-end gap-3 pt-2 border-t border-border/50">
+        <Button type="button" variant="outline" onClick={onSuccess} disabled={isPending}>
           Cancel
         </Button>
         <Button type="submit" disabled={isPending} className="min-w-[100px]">
-          {isPending ? "Saving..." : "Save"}
+          {isPending ? "Saving…" : transaction ? "Update" : "Add Transaction"}
         </Button>
       </div>
     </form>
