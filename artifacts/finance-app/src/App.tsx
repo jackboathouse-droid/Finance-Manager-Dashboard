@@ -9,6 +9,7 @@ import { Layout } from "./components/layout";
 // Pages
 import Login from "./pages/login";
 import Signup from "./pages/signup";
+import ResetPassword from "./pages/reset-password";
 import Dashboard from "./pages/dashboard";
 import Transactions from "./pages/transactions";
 import Accounts from "./pages/accounts";
@@ -53,7 +54,11 @@ function Router() {
       <Route path="/signup">
         {isAuthenticated ? <Redirect to="/" /> : <Signup />}
       </Route>
-      
+
+      <Route path="/reset-password">
+        {isAuthenticated ? <Redirect to="/" /> : <ResetPassword />}
+      </Route>
+
       <Route path="/" component={() => <ProtectedRoute component={Dashboard} />} />
       <Route path="/transactions" component={() => <ProtectedRoute component={Transactions} />} />
       <Route path="/accounts" component={() => <ProtectedRoute component={Accounts} />} />

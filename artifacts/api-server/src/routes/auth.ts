@@ -1,8 +1,11 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import bcrypt from "bcryptjs";
+import { randomBytes } from "crypto";
 import { db } from "@workspace/db";
 import { usersTable } from "@workspace/db";
 import { eq, count } from "drizzle-orm";
+import { sql } from "drizzle-orm";
+import * as nodemailer from "nodemailer";
 import passport from "../lib/google-auth";
 import { googleOAuthEnabled, getFrontendBase } from "../lib/google-auth";
 
@@ -10,6 +13,7 @@ const router: IRouter = Router();
 
 const SALT_ROUNDS = 12;
 const MAX_USERS = 5;
+const RESET_TOKEN_TTL_MINUTES = 60;
 
 declare module "express-session" {
   interface SessionData {
@@ -46,6 +50,21 @@ function normalizeLoginId(raw: string): string {
   return trimmed === "admin" ? "admin@bubble.app" : trimmed;
 }
 
+/** Build a nodemailer transporter from env vars (returns null if unconfigured) */
+function buildMailTransporter(): nodemailer.Transporter | null {
+  const host = process.env.SMTP_HOST;
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  if (!host || !user || !pass) return null;
+
+  return nodemailer.createTransport({
+    host,
+    port: parseInt(process.env.SMTP_PORT || "587"),
+    secure: process.env.SMTP_SECURE === "true",
+    auth: { user, pass },
+  });
+}
+
 // ── Register (email + password) ───────────────────────────────────────────────
 
 router.post("/auth/register", async (req, res) => {
@@ -56,7 +75,6 @@ router.post("/auth/register", async (req, res) => {
       password?: string;
     };
 
-    // Validation
     if (!fullName?.trim()) {
       return res.status(400).json({ error: "Full name is required." });
     }
@@ -71,7 +89,6 @@ router.post("/auth/register", async (req, res) => {
       return res.status(400).json({ error: "Password must be at least 8 characters." });
     }
 
-    // 5-user cap
     const [{ total }] = await db.select({ total: count() }).from(usersTable);
     if (total >= MAX_USERS) {
       return res.status(403).json({
@@ -109,7 +126,6 @@ router.post("/auth/register", async (req, res) => {
       .returning();
 
     setUserSession(req, newUser);
-
     req.log.info({ userId: newUser.id, email: newUser.email }, "New user registered");
 
     await new Promise<void>((resolve, reject) =>
@@ -145,7 +161,6 @@ router.post("/auth/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid email or password." });
     }
 
-    // Google-only account (no password set)
     if (!user.password_hash) {
       return res.status(401).json({
         error: 'This account uses Google Sign-In. Please click "Continue with Google".',
@@ -159,7 +174,6 @@ router.post("/auth/login", async (req, res) => {
     }
 
     setUserSession(req, user);
-
     req.log.info({ userId: user.id, email: user.email, role: user.role }, "User logged in");
 
     await new Promise<void>((resolve, reject) =>
@@ -170,6 +184,162 @@ router.post("/auth/login", async (req, res) => {
   } catch (err) {
     req.log.error(err);
     return res.status(500).json({ error: "Login failed. Please try again." });
+  }
+});
+
+// ── Forgot password ───────────────────────────────────────────────────────────
+
+router.post("/auth/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body as { email?: string };
+
+    if (!email?.trim()) {
+      return res.status(400).json({ error: "Email address is required." });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Always return success to avoid user enumeration
+    const GENERIC_MSG = "If an account with that email exists, a reset link has been sent. Please check your inbox.";
+
+    const [user] = await db
+      .select({ id: usersTable.id, email: usersTable.email, full_name: usersTable.full_name, auth_provider: usersTable.auth_provider })
+      .from(usersTable)
+      .where(eq(usersTable.email, normalizedEmail));
+
+    if (!user) {
+      return res.json({ message: GENERIC_MSG });
+    }
+
+    if (user.auth_provider === "google") {
+      return res.json({ message: GENERIC_MSG });
+    }
+
+    // Invalidate any existing unexpired tokens for this user
+    await db.execute(
+      sql`UPDATE password_reset_tokens SET used_at = NOW() WHERE user_id = ${user.id} AND used_at IS NULL AND expires_at > NOW()`
+    );
+
+    // Create a new token
+    const token = randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MINUTES * 60 * 1000);
+
+    await db.execute(
+      sql`INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES (${user.id}, ${token}, ${expiresAt.toISOString()})`
+    );
+
+    const frontendBase = getFrontendBase();
+    const resetUrl = `${frontendBase}/reset-password?token=${token}`;
+
+    req.log.info({ userId: user.id, resetUrl }, "Password reset token created");
+
+    // Try to send email
+    const transporter = buildMailTransporter();
+    if (transporter) {
+      const fromAddr = process.env.SMTP_FROM || process.env.SMTP_USER;
+      await transporter.sendMail({
+        from: `"Bubble Finance" <${fromAddr}>`,
+        to: user.email,
+        subject: "Reset your Bubble password",
+        html: `
+          <div style="font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px;">
+            <h2 style="color: #1C3A5E; margin-bottom: 8px;">Reset your password</h2>
+            <p style="color: #64748b;">Hi ${user.full_name},</p>
+            <p style="color: #64748b;">We received a request to reset the password for your Bubble account. Click the button below to choose a new password. This link expires in ${RESET_TOKEN_TTL_MINUTES} minutes.</p>
+            <a href="${resetUrl}" style="display: inline-block; margin: 24px 0; padding: 12px 28px; background: #4FC3F7; color: #fff; border-radius: 8px; text-decoration: none; font-weight: 600;">Reset password</a>
+            <p style="color: #94a3b8; font-size: 13px;">If you didn't request this, you can safely ignore this email — your password won't change.</p>
+            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+            <p style="color: #94a3b8; font-size: 12px;">Bubble Finance · Your personal finance companion</p>
+          </div>
+        `,
+        text: `Reset your Bubble password\n\nHi ${user.full_name},\n\nClick the link below to reset your password (expires in ${RESET_TOKEN_TTL_MINUTES} min):\n\n${resetUrl}\n\nIf you didn't request this, ignore this email.`,
+      });
+      return res.json({ message: GENERIC_MSG });
+    }
+
+    // Demo/dev mode: return the reset URL so the app still works without SMTP
+    req.log.warn("SMTP not configured — returning reset URL in response (dev mode)");
+    return res.json({
+      message: GENERIC_MSG,
+      _dev_reset_url: resetUrl,
+    });
+  } catch (err) {
+    req.log.error(err);
+    return res.status(500).json({ error: "Failed to process request. Please try again." });
+  }
+});
+
+// ── Reset password ────────────────────────────────────────────────────────────
+
+router.post("/auth/reset-password", async (req, res) => {
+  try {
+    const { token, password } = req.body as { token?: string; password?: string };
+
+    if (!token?.trim()) {
+      return res.status(400).json({ error: "Reset token is missing." });
+    }
+    if (!password || password.length < 8) {
+      return res.status(400).json({ error: "Password must be at least 8 characters." });
+    }
+
+    // Validate token
+    const rows = await db.execute<{
+      id: number;
+      user_id: number;
+      expires_at: string;
+      used_at: string | null;
+    }>(
+      sql`SELECT id, user_id, expires_at, used_at FROM password_reset_tokens WHERE token = ${token.trim()} LIMIT 1`
+    );
+
+    const row = (rows as any).rows?.[0] ?? rows[0];
+
+    if (!row) {
+      return res.status(400).json({ error: "This reset link is invalid. Please request a new one." });
+    }
+    if (row.used_at) {
+      return res.status(400).json({ error: "This reset link has already been used. Please request a new one." });
+    }
+    if (new Date(row.expires_at) < new Date()) {
+      return res.status(400).json({ error: "This reset link has expired. Please request a new one." });
+    }
+
+    // Hash and update password
+    const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
+    await db.execute(sql`UPDATE users SET password_hash = ${password_hash} WHERE id = ${row.user_id}`);
+
+    // Mark token used
+    await db.execute(sql`UPDATE password_reset_tokens SET used_at = NOW() WHERE id = ${row.id}`);
+
+    req.log.info({ userId: row.user_id }, "Password reset successful");
+
+    return res.json({ success: true, message: "Your password has been reset successfully. Please log in." });
+  } catch (err) {
+    req.log.error(err);
+    return res.status(500).json({ error: "Failed to reset password. Please try again." });
+  }
+});
+
+// ── Validate reset token (GET — for page load check) ─────────────────────────
+
+router.get("/auth/reset-password/validate", async (req, res) => {
+  try {
+    const { token } = req.query as { token?: string };
+    if (!token) return res.status(400).json({ valid: false, error: "Token missing." });
+
+    const rows = await db.execute<{ id: number; used_at: string | null; expires_at: string }>(
+      sql`SELECT id, used_at, expires_at FROM password_reset_tokens WHERE token = ${token} LIMIT 1`
+    );
+    const row = (rows as any).rows?.[0] ?? rows[0];
+
+    if (!row) return res.json({ valid: false, error: "Invalid reset link." });
+    if (row.used_at) return res.json({ valid: false, error: "This link has already been used." });
+    if (new Date(row.expires_at) < new Date()) return res.json({ valid: false, error: "This link has expired." });
+
+    return res.json({ valid: true });
+  } catch (err) {
+    req.log.error(err);
+    return res.status(500).json({ valid: false, error: "Server error." });
   }
 });
 

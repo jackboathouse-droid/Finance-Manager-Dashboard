@@ -6,9 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { BubbleLogo } from "@/components/bubble-logo";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
 import { useToast } from "@/hooks/use-toast";
+import { Mail, CheckCircle2 } from "lucide-react";
 
 // ── Glass bubble decoration ───────────────────────────────────────────────────
 
@@ -73,26 +75,137 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   session_error: "A session error occurred. Please try again.",
 };
 
+// ── Forgot Password dialog ────────────────────────────────────────────────────
+
+function ForgotPasswordDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [email, setEmail] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [devUrl, setDevUrl] = useState<string | null>(null);
+  const [error, setError] = useState("");
+
+  const handleReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim()) { setError("Please enter your email address."); return; }
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || "Something went wrong."); return; }
+      setSent(true);
+      if (data._dev_reset_url) setDevUrl(data._dev_reset_url);
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleClose = () => {
+    onClose();
+    setTimeout(() => { setEmail(""); setSent(false); setDevUrl(null); setError(""); }, 300);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Mail className="h-5 w-5 text-primary" />
+            Reset your password
+          </DialogTitle>
+          <DialogDescription>
+            Enter the email address for your account and we'll send you a reset link.
+          </DialogDescription>
+        </DialogHeader>
+
+        {sent ? (
+          <div className="py-4 space-y-4">
+            <div className="flex flex-col items-center gap-3 text-center py-2">
+              <CheckCircle2 className="h-12 w-12 text-emerald-500" />
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                If an account with that email exists, a reset link has been sent. Please check your inbox.
+              </p>
+            </div>
+            {devUrl && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 p-3 space-y-1">
+                <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">Dev mode — no SMTP configured</p>
+                <p className="text-xs text-amber-600 dark:text-amber-500 break-all">
+                  <a href={devUrl} className="underline underline-offset-2 hover:text-amber-800">{devUrl}</a>
+                </p>
+              </div>
+            )}
+            <Button className="w-full" onClick={handleClose}>Back to login</Button>
+          </div>
+        ) : (
+          <form onSubmit={handleReset} className="space-y-4 pt-1">
+            <div className="space-y-2">
+              <Label htmlFor="reset-email">Email address</Label>
+              <Input
+                id="reset-email"
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => { setEmail(e.target.value); setError(""); }}
+                autoComplete="email"
+                autoFocus
+                className="h-11"
+              />
+              {error && <p className="text-sm text-destructive">{error}</p>}
+            </div>
+            <div className="flex gap-3">
+              <Button type="button" variant="outline" className="flex-1" onClick={handleClose} disabled={loading}>
+                Cancel
+              </Button>
+              <Button type="submit" className="flex-1" disabled={loading}>
+                {loading ? "Sending…" : "Send reset link"}
+              </Button>
+            </div>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+
 export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [forgotOpen, setForgotOpen] = useState(false);
   const [, setLocation] = useLocation();
   const loginMutation = useLogin();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const search = useSearch();
 
-  // Show a toast if the user was redirected back with an OAuth error
+  // Show toasts for OAuth errors or successful password reset redirect
   useEffect(() => {
     const params = new URLSearchParams(search);
     const error = params.get("error");
+    const reset = params.get("reset");
+
     if (error && OAUTH_ERROR_MESSAGES[error]) {
       toast({
         title: "Sign-in failed",
         description: OAUTH_ERROR_MESSAGES[error],
         variant: "destructive",
       });
-      // Remove the error param from URL without triggering re-render loop
+    } else if (reset === "success") {
+      toast({
+        title: "Password reset successfully",
+        description: "Your password has been updated. Please log in with your new password.",
+      });
+    }
+
+    if (error || reset) {
       window.history.replaceState({}, "", window.location.pathname);
     }
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -221,7 +334,16 @@ export default function Login() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="password">Password</Label>
+                    <button
+                      type="button"
+                      onClick={() => setForgotOpen(true)}
+                      className="text-xs text-primary hover:underline underline-offset-4 font-medium transition-colors"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
                   <Input
                     id="password"
                     type="password"
@@ -322,6 +444,8 @@ export default function Login() {
           </p>
         </div>
       </div>
+
+      <ForgotPasswordDialog open={forgotOpen} onClose={() => setForgotOpen(false)} />
     </div>
   );
 }
