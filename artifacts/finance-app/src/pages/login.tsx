@@ -189,7 +189,9 @@ export default function Login() {
 
           {/* Logo */}
           <div className="flex justify-center mb-9">
-            <BubbleLogo size="lg" />
+            <div style={{ display: "inline-block", transform: "scale(1.20)", transformOrigin: "center center", transition: "transform 0.4s ease" }}>
+              <BubbleLogo size="lg" />
+            </div>
           </div>
 
           {/* Headline + subheading */}

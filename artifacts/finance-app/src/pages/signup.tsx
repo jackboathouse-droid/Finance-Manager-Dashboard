@@ -146,7 +146,9 @@ export default function Signup() {
 
           {/* Logo */}
           <div className="flex justify-center mb-8">
-            <BubbleLogo size="lg" />
+            <div style={{ display: "inline-block", transform: "scale(1.20)", transformOrigin: "center center", transition: "transform 0.4s ease" }}>
+              <BubbleLogo size="lg" />
+            </div>
           </div>
 
           {/* Headline + subheading */}

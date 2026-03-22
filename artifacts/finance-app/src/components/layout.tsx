@@ -39,8 +39,24 @@ export function Layout({ children }: { children: ReactNode }) {
       <div className="flex min-h-screen w-full bg-background/50">
         <AppSidebar />
         <div className="flex flex-col flex-1 min-w-0">
-          <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-4 border-b border-border/50 bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 sm:px-6">
+          <header className="sticky top-0 z-40 relative flex h-16 shrink-0 items-center gap-x-4 border-b border-border/50 bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 sm:px-6">
             <SidebarTrigger className="-ml-1 text-muted-foreground hover:text-foreground" />
+            {/* Centred slogan — only visible for logged-in users (this layout is auth-only) */}
+            <span
+              aria-hidden="false"
+              className="hidden sm:block pointer-events-none select-none absolute left-1/2 -translate-x-1/2"
+              style={{
+                fontFamily: "'Dancing Script', cursive",
+                fontWeight: 700,
+                fontSize: "17px",
+                color: "#4FC3F7",
+                whiteSpace: "nowrap",
+                letterSpacing: "0.1px",
+                opacity: 0.85,
+              }}
+            >
+              Balance, Budget and Breathe
+            </span>
             <div className="flex flex-1 items-center justify-end gap-x-4">
               <div className="flex items-center gap-3">
                 <span className="text-sm font-medium text-muted-foreground hidden sm:inline-block">
