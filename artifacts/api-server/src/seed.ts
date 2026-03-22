@@ -1,4 +1,4 @@
-import { db } from "@workspace/db";
+import { db, pool } from "@workspace/db";
 import { categoriesTable, subcategoriesTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
@@ -93,6 +93,24 @@ const DEFAULT_CATEGORIES: CategorySeed[] = [
     subcategories: ["Tax Refund", "Gifts Received", "Reimbursements", "Side Hustle"],
   },
 ];
+
+/**
+ * Ensures the session table exists in PostgreSQL.
+ * Required by connect-pg-simple. Safe to run on every startup.
+ */
+export async function ensureSessionTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS "user_sessions" (
+      "sid" varchar NOT NULL COLLATE "default",
+      "sess" json NOT NULL,
+      "expire" timestamp(6) NOT NULL,
+      CONSTRAINT "user_sessions_pkey" PRIMARY KEY ("sid") NOT DEFERRABLE INITIALLY IMMEDIATE
+    ) WITH (OIDS=FALSE);
+
+    CREATE INDEX IF NOT EXISTS "IDX_user_sessions_expire"
+      ON "user_sessions" ("expire");
+  `);
+}
 
 export async function seedDefaultCategories() {
   const existing = await db.select().from(categoriesTable).limit(1);
