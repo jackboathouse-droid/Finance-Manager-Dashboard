@@ -7,6 +7,7 @@ import subcategoriesRouter from "./subcategories";
 import transactionsRouter from "./transactions";
 import budgetsRouter from "./budgets";
 import dashboardRouter from "./dashboard";
+import reportsRouter from "./reports";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(subcategoriesRouter);
 router.use(transactionsRouter);
 router.use(budgetsRouter);
 router.use(dashboardRouter);
+router.use(reportsRouter);
 
 export default router;

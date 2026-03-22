@@ -1,0 +1,128 @@
+Add a new "Reports" page to the Bubble finance app with full financial reporting functionality.
+
+---
+
+BACKEND:
+
+Create API endpoints to support reports:
+
+1. /reports/profit-loss
+- Returns total income, total expenses, and net profit
+- Grouped by month and by category
+
+2. /reports/balance-sheet
+- Returns:
+  Assets (bank accounts)
+  Liabilities (credit cards)
+  Net worth
+- Calculated from transactions
+
+3. /reports/spending
+- Returns spending breakdown by category and subcategory
+
+4. All reports must support filters:
+- date range (start_date, end_date)
+- category_id
+- account_id
+- person
+
+---
+
+LOGIC RULES:
+
+- Expenses = negative values
+- Income = positive values
+- Transfers must be excluded from P&L
+- Balance sheet:
+  Assets = sum of bank accounts
+  Liabilities = sum of credit cards
+  Net worth = Assets - Liabilities
+
+---
+
+FRONTEND:
+
+1. Add "Reports" to sidebar navigation
+
+2. Reports Page Layout:
+
+Top section:
+- Filters:
+  - Date range picker
+  - Category filter
+  - Account filter
+  - Person filter
+  - Search bar (global search across transactions and reports)
+
+---
+
+SECTION 1: Profit & Loss
+
+- Show:
+  Total Income
+  Total Expenses
+  Net Profit
+
+- Chart:
+  Line chart showing income vs expenses over time
+
+- Table:
+  Breakdown by category
+
+---
+
+SECTION 2: Balance Sheet
+
+- Show:
+  Assets (grouped by account)
+  Liabilities (grouped by account)
+  Net Worth
+
+- Chart:
+  Bar chart comparing assets vs liabilities
+
+---
+
+SECTION 3: Spending Analysis
+
+- Pie chart:
+  Spending by category
+
+- Bar chart:
+  Spending by subcategory
+
+---
+
+SECTION 4: Detailed Report Table
+
+- Table of transactions
+- Fully searchable and filterable
+- Columns:
+  Date, Description, Category, Subcategory, Account, Amount
+
+---
+
+SEARCH FUNCTIONALITY:
+
+- Add a global search bar at the top of the Reports page
+- User can type anything (e.g. "groceries", "March", "Visa")
+- Dynamically filter:
+  - charts
+  - tables
+  - metrics
+
+---
+
+UX REQUIREMENTS:
+
+- Clean, modern fintech UI (consistent with Bubble theme)
+- Use cards for each report section
+- Smooth loading states
+- Responsive design
+- Charts update instantly when filters change
+
+---
+
+GOAL:
+
+Create a fully interactive Reports page that behaves like professional accounting software, allowing users to explore their financial data through charts, tables, and filters in real time.
