@@ -5,9 +5,66 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { BubbleLogo } from "@/components/bubble-logo";
 import { useToast } from "@/hooks/use-toast";
+
+// ── Glass bubble decoration ───────────────────────────────────────────────────
+
+interface BubbleProps {
+  size: number;
+  top?: number | string;
+  left?: number | string;
+  right?: number | string;
+  bottom?: number | string;
+  highlightX?: string;
+  highlightY?: string;
+  opacity?: number;
+  blur?: number;
+}
+
+function GlassOrb({
+  size,
+  top,
+  left,
+  right,
+  bottom,
+  highlightX = "27%",
+  highlightY = "24%",
+  opacity = 1,
+  blur = 0,
+}: BubbleProps) {
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: "absolute",
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        pointerEvents: "none",
+        top,
+        left,
+        right,
+        bottom,
+        opacity,
+        filter: blur ? `blur(${blur}px)` : undefined,
+        background: [
+          `radial-gradient(circle at ${highlightX} ${highlightY}, rgba(255,255,255,0.62) 0%, transparent 30%)`,
+          `radial-gradient(circle at 55% 60%, rgba(179,229,252,0.30) 0%, transparent 38%)`,
+          `radial-gradient(circle at 42% 38%, rgba(224,247,254,0.38) 0%, rgba(79,195,247,0.05) 60%, transparent 100%)`,
+        ].join(", "),
+        border: "1px solid rgba(179,229,252,0.38)",
+        boxShadow: [
+          "inset 0 1px 8px rgba(255,255,255,0.32)",
+          "0 4px 24px rgba(79,195,247,0.06)",
+        ].join(", "),
+      }}
+    />
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function Login() {
   const [username, setUsername] = useState("admin");
@@ -39,21 +96,88 @@ export default function Login() {
 
   return (
     <div className="min-h-screen w-full flex">
-      {/* Left side - Login Form */}
-      <div className="flex-1 flex flex-col items-center justify-center p-8 bg-background relative z-10">
-        <div className="w-full max-w-md animate-in fade-in slide-in-from-bottom-8 duration-700">
-          <div className="flex justify-center mb-10">
+      {/* ── Left: Form side ──────────────────────────────────────────────── */}
+      <div className="flex-1 flex flex-col items-center justify-center p-8 bg-background relative overflow-hidden">
+
+        {/* Bubble orb decorations — positioned around the edges */}
+
+        {/* Large orb — top-left, partially off-screen */}
+        <GlassOrb
+          size={260} top={-110} left={-90}
+          highlightX="28%" highlightY="22%"
+          opacity={0.85} blur={0.5}
+        />
+
+        {/* Medium-large orb — bottom-right, partially off-screen */}
+        <GlassOrb
+          size={160} bottom={-55} right={-50}
+          highlightX="26%" highlightY="26%"
+          opacity={0.80}
+        />
+
+        {/* Medium orb — upper-right, fully visible */}
+        <GlassOrb
+          size={88} top="12%" right={48}
+          highlightX="30%" highlightY="22%"
+          opacity={0.75}
+        />
+
+        {/* Small orb — left edge, middle-ish */}
+        <GlassOrb
+          size={54} top="52%" left={-16}
+          highlightX="25%" highlightY="20%"
+          opacity={0.70}
+        />
+
+        {/* Small orb — lower-left area */}
+        <GlassOrb
+          size={44} bottom="18%" left={72}
+          highlightX="28%" highlightY="24%"
+          opacity={0.68}
+        />
+
+        {/* Tiny orb — top center scatter */}
+        <GlassOrb
+          size={30} top="7%" left="32%"
+          highlightX="25%" highlightY="22%"
+          opacity={0.65}
+        />
+
+        {/* Mini orb — right side mid-lower */}
+        <GlassOrb
+          size={22} bottom="30%" right={80}
+          highlightX="26%" highlightY="20%"
+          opacity={0.60}
+        />
+
+        {/* Micro orb — bottom scatter */}
+        <GlassOrb
+          size={16} bottom="12%" left="55%"
+          highlightX="25%" highlightY="22%"
+          opacity={0.55}
+        />
+
+        {/* ── Form content ──────────────────────────────────────────────── */}
+        <div className="w-full max-w-md relative z-10 animate-in fade-in slide-in-from-bottom-8 duration-700">
+
+          {/* Logo */}
+          <div className="flex justify-center mb-9">
             <BubbleLogo size="lg" />
           </div>
 
-          <Card className="border-border/50 shadow-xl shadow-black/5 bg-card/50 backdrop-blur-xl">
-            <CardHeader className="space-y-2 text-center pb-6">
-              <CardTitle className="text-2xl">Welcome back</CardTitle>
-              <CardDescription className="text-base">
-                Sign in to manage your finances
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
+          {/* Headline + subheading */}
+          <div className="text-center mb-8">
+            <h1 className="text-[1.85rem] font-bold tracking-tight text-foreground leading-tight mb-2.5">
+              Balance, Budget, and Breathe.
+            </h1>
+            <p className="text-[0.95rem] text-muted-foreground leading-relaxed">
+              Money management, simplified&nbsp;&mdash; inside your&nbsp;Bubble
+            </p>
+          </div>
+
+          {/* Login card */}
+          <Card className="border-border/50 shadow-xl shadow-black/5 bg-card/60 backdrop-blur-xl">
+            <CardContent className="pt-7 pb-7">
               <form onSubmit={handleLogin} className="space-y-5">
                 <div className="space-y-2">
                   <Label htmlFor="username">Username</Label>
@@ -63,12 +187,11 @@ export default function Login() {
                     onChange={(e) => setUsername(e.target.value)}
                     className="h-12 bg-background/50"
                     placeholder="Enter your username"
+                    autoComplete="username"
                   />
                 </div>
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="password">Password</Label>
-                  </div>
+                  <Label htmlFor="password">Password</Label>
                   <Input
                     id="password"
                     type="password"
@@ -76,38 +199,74 @@ export default function Login() {
                     onChange={(e) => setPassword(e.target.value)}
                     className="h-12 bg-background/50"
                     placeholder="••••••••"
+                    autoComplete="current-password"
                   />
                 </div>
                 <Button
                   type="submit"
-                  className="w-full h-12 text-base font-medium shadow-md hover:shadow-lg transition-all"
+                  className="w-full h-12 text-base font-medium shadow-md hover:shadow-lg transition-all mt-1"
                   disabled={loginMutation.isPending}
                 >
-                  {loginMutation.isPending ? "Signing in..." : "Sign in"}
+                  {loginMutation.isPending ? "Signing in…" : "Sign in"}
                 </Button>
               </form>
-              <div className="mt-8 text-center text-sm text-muted-foreground">
-                <p>Demo credentials: admin / admin</p>
-              </div>
+              <p className="mt-6 text-center text-sm text-muted-foreground">
+                Demo credentials: admin&nbsp;/&nbsp;admin
+              </p>
             </CardContent>
           </Card>
         </div>
       </div>
 
-      {/* Right side - Abstract Art */}
+      {/* ── Right: Hero panel ────────────────────────────────────────────── */}
       <div className="hidden lg:block lg:flex-1 relative bg-slate-900 overflow-hidden">
         <img
           src={`${import.meta.env.BASE_URL}images/login-bg.png`}
           alt="Abstract fintech background"
           className="absolute inset-0 w-full h-full object-cover opacity-80"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-transparent"></div>
+        {/* Gradient overlay from bottom */}
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/95 via-slate-900/30 to-transparent" />
+
+        {/* Subtle bubble hints on the dark side too */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            width: 320,
+            height: 320,
+            borderRadius: "50%",
+            top: -80,
+            right: -80,
+            background:
+              "radial-gradient(circle at 30% 28%, rgba(255,255,255,0.06) 0%, transparent 30%), radial-gradient(circle at 50% 50%, rgba(79,195,247,0.07) 0%, transparent 65%)",
+            border: "1px solid rgba(79,195,247,0.12)",
+            pointerEvents: "none",
+          }}
+        />
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            width: 120,
+            height: 120,
+            borderRadius: "50%",
+            bottom: 140,
+            right: 60,
+            background:
+              "radial-gradient(circle at 28% 24%, rgba(255,255,255,0.07) 0%, transparent 30%), radial-gradient(circle at 50% 50%, rgba(79,195,247,0.08) 0%, transparent 65%)",
+            border: "1px solid rgba(79,195,247,0.14)",
+            pointerEvents: "none",
+          }}
+        />
+
+        {/* Hero copy */}
         <div className="absolute bottom-16 left-16 right-16 z-20">
-          <h2 className="text-4xl font-display font-bold text-white mb-4">
-            Master your money.
+          <h2 className="text-4xl font-bold text-white mb-4 leading-tight tracking-tight">
+            Balance, Budget,<br />and Breathe.
           </h2>
-          <p className="text-lg text-slate-300 max-w-lg">
-            Track expenses, manage budgets, and achieve your financial goals with absolute clarity.
+          <p className="text-lg text-slate-300 max-w-lg leading-relaxed">
+            Money management, simplified — inside your Bubble
           </p>
         </div>
       </div>
