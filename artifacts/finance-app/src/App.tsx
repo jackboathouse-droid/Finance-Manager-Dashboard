@@ -8,6 +8,7 @@ import { Layout } from "./components/layout";
 
 // Pages
 import Login from "./pages/login";
+import Signup from "./pages/signup";
 import Dashboard from "./pages/dashboard";
 import Transactions from "./pages/transactions";
 import Accounts from "./pages/accounts";
@@ -45,6 +46,10 @@ function Router() {
     <Switch>
       <Route path="/login">
         {isAuthenticated ? <Redirect to="/" /> : <Login />}
+      </Route>
+
+      <Route path="/signup">
+        {isAuthenticated ? <Redirect to="/" /> : <Signup />}
       </Route>
       
       <Route path="/" component={() => <ProtectedRoute component={Dashboard} />} />

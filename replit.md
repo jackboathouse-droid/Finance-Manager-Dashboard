@@ -42,7 +42,7 @@ artifacts-monorepo/
 - **Transactions**: Add, edit, delete, filter by month/category/account, CSV import
 - **Accounts**: Bank and credit card accounts with calculated balances
 - **Budgets**: Set monthly budgets per category, see variance vs actual spending
-- **Auth**: Session-based login (demo: admin/admin)
+- **Auth**: Session-based login with registration. Demo account: admin/admin. New accounts sign up with email + password (bcryptjs, 12 rounds).
 
 ## Database Schema
 
@@ -51,9 +51,11 @@ artifacts-monorepo/
 - `subcategories` — id, name, category_id, type
 - `transactions` — id, date, description, account_id, category_id, subcategory_id, amount, person, type
 - `budgets` — id, category_id, subcategory_id, month (YYYY-MM), budget_amount
+- `users` — id, full_name, email (unique), password_hash, created_at
 
 ## Key API Routes
 
+- `/api/auth/register` POST (fullName, email, password) — creates account + auto-login
 - `/api/auth/login`, `/api/auth/logout`, `/api/auth/me`
 - `/api/accounts` CRUD
 - `/api/categories` CRUD
@@ -65,7 +67,7 @@ artifacts-monorepo/
 
 ## Auth
 
-Session-based auth using `express-session`. Demo credentials: `admin` / `admin`.
+Session-based auth using `express-session`. Demo credentials: `admin` / `admin`. New users register at `/signup` with email + password (bcrypt hashed). Login accepts email (for registered users) or "admin" (legacy). Session stores username, email, fullName, userId.
 
 ## Development
 

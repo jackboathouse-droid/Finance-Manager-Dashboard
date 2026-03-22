@@ -15,6 +15,15 @@ export const HealthCheckResponse = zod.object({
 });
 
 /**
+ * @summary Create a new account
+ */
+export const RegisterBody = zod.object({
+  fullName: zod.string(),
+  email: zod.string().email(),
+  password: zod.string(),
+});
+
+/**
  * @summary Login
  */
 export const LoginBody = zod.object({

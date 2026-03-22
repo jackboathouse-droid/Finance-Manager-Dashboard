@@ -17,6 +17,12 @@ export interface MessageResponse {
   message: string;
 }
 
+export interface RegisterRequest {
+  fullName: string;
+  email: string;
+  password: string;
+}
+
 export interface LoginRequest {
   username: string;
   password: string;

@@ -40,6 +40,7 @@ export * from "./loginRequest";
 export * from "./loginResponse";
 export * from "./messageResponse";
 export * from "./monthlyChartPoint";
+export * from "./registerRequest";
 export * from "./subcategory";
 export * from "./subcategoryChartPoint";
 export * from "./subcategoryType";
