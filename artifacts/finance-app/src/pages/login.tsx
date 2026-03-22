@@ -167,10 +167,10 @@ export default function Login() {
 
           {/* Headline + subheading */}
           <div className="text-center mb-8">
-            <h1 className="font-display font-bold text-foreground leading-tight mb-2.5" style={{ fontSize: "2rem" }}>
+            <h1 className="text-[1.85rem] font-bold tracking-tight text-foreground leading-tight mb-2.5">
               Balance, Budget, and Breathe.
             </h1>
-            <p className="font-display text-muted-foreground leading-relaxed" style={{ fontSize: "1.15rem" }}>
+            <p className="text-[0.95rem] text-muted-foreground leading-relaxed">
               Money management, simplified&nbsp;&mdash; inside your&nbsp;Bubble
             </p>
           </div>
@@ -262,10 +262,10 @@ export default function Login() {
 
         {/* Hero copy */}
         <div className="absolute bottom-16 left-16 right-16 z-20">
-          <h2 className="font-display font-bold text-white mb-4 leading-tight" style={{ fontSize: "2.6rem" }}>
+          <h2 className="text-4xl font-bold text-white mb-4 leading-tight tracking-tight">
             Balance, Budget,<br />and Breathe.
           </h2>
-          <p className="font-display text-slate-300 max-w-lg leading-relaxed" style={{ fontSize: "1.25rem" }}>
+          <p className="text-lg text-slate-300 max-w-lg leading-relaxed">
             Money management, simplified — inside your Bubble
           </p>
         </div>

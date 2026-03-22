@@ -133,12 +133,13 @@ export function BubbleLogo({
       {/* Script wordmark — the "B" is partially under the glass bubble */}
       <span
         style={{
-          fontFamily: "'Pacifico', cursive",
+          fontFamily: "'Dancing Script', cursive",
+          fontWeight: 700,
           fontSize: `${fontSize}px`,
           lineHeight: 1,
           color: "#1C3A5E",
           whiteSpace: "nowrap",
-          letterSpacing: "0px",
+          letterSpacing: "-0.3px",
         }}
       >
         Bubble

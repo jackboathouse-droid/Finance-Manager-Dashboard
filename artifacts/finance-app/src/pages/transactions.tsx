@@ -146,7 +146,7 @@ export default function Transactions() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-4xl font-display font-bold">Transactions</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Transactions</h1>
           <p className="text-muted-foreground mt-1 text-sm">
             {isLoading ? "Loading…" : `${transactions?.length ?? 0} transactions`}
             {hasActiveFilters && " · filtered"}
