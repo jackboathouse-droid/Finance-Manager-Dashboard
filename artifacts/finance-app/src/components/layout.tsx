@@ -48,11 +48,12 @@ export function Layout({ children }: { children: ReactNode }) {
               style={{
                 fontFamily: "'Dancing Script', cursive",
                 fontWeight: 700,
-                fontSize: "17px",
+                fontSize: "22px",
                 color: "#4FC3F7",
                 whiteSpace: "nowrap",
                 letterSpacing: "0.1px",
                 opacity: 0.85,
+                transition: "font-size 0.4s ease",
               }}
             >
               Balance, Budget and Breathe
