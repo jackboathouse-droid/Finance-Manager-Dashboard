@@ -399,6 +399,53 @@ router.post("/auth/logout", (req, res) => {
   });
 });
 
+// ── Change Password ───────────────────────────────────────────────────────────
+
+router.post("/auth/change-password", async (req, res) => {
+  if (!req.session?.authenticated || !req.session.userId) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+
+  const { current_password, new_password } = req.body;
+  if (!current_password || !new_password) {
+    return res.status(400).json({ error: "current_password and new_password are required" });
+  }
+  if (typeof new_password !== "string" || new_password.length < 8) {
+    return res.status(400).json({ error: "New password must be at least 8 characters" });
+  }
+
+  try {
+    const [user] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.id, req.session.userId));
+
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    if (!user.password_hash) {
+      return res.status(400).json({
+        error: "Password change is not available for accounts that signed in with Google",
+      });
+    }
+
+    const valid = await bcrypt.compare(current_password, user.password_hash);
+    if (!valid) {
+      return res.status(400).json({ error: "Current password is incorrect" });
+    }
+
+    const newHash = await bcrypt.hash(new_password, SALT_ROUNDS);
+    await db
+      .update(usersTable)
+      .set({ password_hash: newHash } as any)
+      .where(eq(usersTable.id, req.session.userId));
+
+    res.json({ message: "Password updated successfully" });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    res.status(500).json({ error: message });
+  }
+});
+
 // ── Me ────────────────────────────────────────────────────────────────────────
 
 router.get("/auth/me", (req, res) => {

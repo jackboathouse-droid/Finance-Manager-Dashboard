@@ -43,6 +43,7 @@ artifacts-monorepo/
 - **Accounts**: Bank and credit card accounts with calculated balances (starting_balance + transaction sum)
 - **Budgets**: Set monthly budgets per category, see variance vs actual spending
 - **Auth**: Session-based login with registration. Demo account: admin/admin. New accounts sign up with email + password (bcryptjs, 12 rounds).
+- **Settings**: Per-user preferences stored in `user_settings` table. Financial (currency, date format), Notifications (3 toggles), Budget Settings (2 toggles), Security (change password). App-wide currency/date formatting uses module-level config updated by `SettingsContext` on load.
 
 ## Database Schema
 
@@ -52,6 +53,7 @@ artifacts-monorepo/
 - `subcategories` — id, name, category_id, type — shared/global
 - `transactions` — id, date, description, account_id, category_id, subcategory_id, amount, person, type, user_id (FK → users)
 - `budgets` — id, category_id, subcategory_id, month (YYYY-MM), budget_amount, user_id (FK → users)
+- `user_settings` — id, user_id (FK → users, UNIQUE), currency (USD/GBP/EUR/CAD), date_format (MM/DD/YYYY|DD/MM/YYYY|YYYY-MM-DD), budget_alerts, milestone_alerts, weekly_summary, recurring_budgets, rollover_budget, created_at, updated_at
 
 ## Key API Routes
 
@@ -64,6 +66,8 @@ artifacts-monorepo/
 - `/api/transactions/import` POST CSV
 - `/api/budgets` CRUD (filter by `month`)
 - `/api/dashboard/summary`, `/api/dashboard/monthly-chart`, `/api/dashboard/category-chart`, `/api/dashboard/budget-vs-actual`
+- `/api/settings` GET/PUT — user preferences (currency, date_format, notifications, budget settings)
+- `/api/auth/change-password` POST — update password (requires current_password, new_password ≥ 8 chars)
 
 ## Auth & Multi-user
 
