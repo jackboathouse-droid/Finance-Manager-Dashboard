@@ -1,8 +1,10 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import bcrypt from "bcryptjs";
 import { db } from "@workspace/db";
 import { usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import passport from "../lib/google-auth";
+import { googleOAuthEnabled, getFrontendBase } from "../lib/google-auth";
 
 const router: IRouter = Router();
 
@@ -15,10 +17,24 @@ declare module "express-session" {
     email?: string;
     fullName?: string;
     userId?: number;
+    profilePicture?: string;
   }
 }
 
-// ── Register ──────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function setUserSession(req: Request, user: { id: number; email: string; full_name: string; profile_picture_url?: string | null }) {
+  req.session.authenticated = true;
+  req.session.username = user.email;
+  req.session.email = user.email;
+  req.session.fullName = user.full_name;
+  req.session.userId = user.id;
+  if (user.profile_picture_url) {
+    req.session.profilePicture = user.profile_picture_url;
+  }
+}
+
+// ── Register (email + password) ───────────────────────────────────────────────
 
 router.post("/auth/register", async (req, res) => {
   try {
@@ -45,11 +61,14 @@ router.post("/auth/register", async (req, res) => {
     const normalizedEmail = email.trim().toLowerCase();
 
     const [existing] = await db
-      .select({ id: usersTable.id })
+      .select({ id: usersTable.id, auth_provider: usersTable.auth_provider })
       .from(usersTable)
       .where(eq(usersTable.email, normalizedEmail));
 
     if (existing) {
+      if (existing.auth_provider === "google") {
+        return res.status(400).json({ error: "This email is linked to a Google account. Please sign in with Google." });
+      }
       return res.status(400).json({ error: "An account with that email already exists." });
     }
 
@@ -57,14 +76,15 @@ router.post("/auth/register", async (req, res) => {
 
     const [newUser] = await db
       .insert(usersTable)
-      .values({ full_name: fullName.trim(), email: normalizedEmail, password_hash })
+      .values({
+        full_name: fullName.trim(),
+        email: normalizedEmail,
+        password_hash,
+        auth_provider: "email",
+      })
       .returning();
 
-    req.session.authenticated = true;
-    req.session.username = normalizedEmail;
-    req.session.email = normalizedEmail;
-    req.session.fullName = newUser.full_name;
-    req.session.userId = newUser.id;
+    setUserSession(req, newUser);
 
     return res.status(201).json({ success: true, username: normalizedEmail });
   } catch (err) {
@@ -73,7 +93,7 @@ router.post("/auth/register", async (req, res) => {
   }
 });
 
-// ── Login ─────────────────────────────────────────────────────────────────────
+// ── Login (email/password) ────────────────────────────────────────────────────
 
 router.post("/auth/login", async (req, res) => {
   try {
@@ -91,7 +111,6 @@ router.post("/auth/login", async (req, res) => {
       return res.json({ success: true, username: "admin" });
     }
 
-    // Email-based DB account — the "username" field accepts an email address
     const normalizedEmail = username.trim().toLowerCase();
 
     const [user] = await db
@@ -103,22 +122,71 @@ router.post("/auth/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid email or password." });
     }
 
+    // User signed up with Google — they have no password
+    if (!user.password_hash) {
+      return res.status(401).json({ error: "This account uses Google Sign-In. Please click \"Continue with Google\"." });
+    }
+
     const passwordMatch = await bcrypt.compare(password, user.password_hash);
     if (!passwordMatch) {
       return res.status(401).json({ error: "Invalid email or password." });
     }
 
-    req.session.authenticated = true;
-    req.session.username = user.email;
-    req.session.email = user.email;
-    req.session.fullName = user.full_name;
-    req.session.userId = user.id;
+    setUserSession(req, user);
 
     return res.json({ success: true, username: user.email });
   } catch (err) {
     req.log.error(err);
     return res.status(500).json({ error: "Login failed. Please try again." });
   }
+});
+
+// ── Google OAuth — initiate ───────────────────────────────────────────────────
+
+router.get("/auth/google", (req: Request, res: Response, next: NextFunction) => {
+  if (!googleOAuthEnabled) {
+    // Redirect back to login with a clear error message
+    return res.redirect(`${getFrontendBase()}/login?error=google_not_configured`);
+  }
+  passport.authenticate("google", {
+    scope: ["profile", "email"],
+    session: false,
+  })(req, res, next);
+});
+
+// ── Google OAuth — callback ───────────────────────────────────────────────────
+
+router.get("/auth/google/callback", (req: Request, res: Response, next: NextFunction) => {
+  const frontendBase = getFrontendBase();
+
+  passport.authenticate(
+    "google",
+    { session: false, failureRedirect: `${frontendBase}/login?error=google_failed` },
+    (err: Error | null, user: typeof usersTable.$inferSelect | false) => {
+      if (err || !user) {
+        req.log.error({ err }, "Google OAuth callback error");
+        return res.redirect(`${frontendBase}/login?error=google_failed`);
+      }
+
+      // Establish our own session
+      setUserSession(req, user);
+
+      // Save session explicitly before redirecting so the cookie is set
+      req.session.save((saveErr) => {
+        if (saveErr) {
+          req.log.error({ saveErr }, "Session save error after Google OAuth");
+          return res.redirect(`${frontendBase}/login?error=session_error`);
+        }
+        return res.redirect(`${frontendBase}/`);
+      });
+    }
+  )(req, res, next);
+});
+
+// ── Google OAuth — status (for UI) ───────────────────────────────────────────
+
+router.get("/auth/google/status", (_req, res) => {
+  res.json({ enabled: googleOAuthEnabled });
 });
 
 // ── Logout ────────────────────────────────────────────────────────────────────
@@ -138,6 +206,7 @@ router.get("/auth/me", (req, res) => {
       authenticated: true,
       fullName: req.session.fullName,
       email: req.session.email,
+      profilePicture: req.session.profilePicture,
     });
   } else {
     res.status(401).json({ error: "Not authenticated" });

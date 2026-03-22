@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useLocation, Link } from "wouter";
+import { useState, useEffect } from "react";
+import { useLocation, Link, useSearch } from "wouter";
 import { useLogin } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { BubbleLogo } from "@/components/bubble-logo";
+import { GoogleSignInButton } from "@/components/google-sign-in-button";
 import { useToast } from "@/hooks/use-toast";
 
 // ── Glass bubble decoration ───────────────────────────────────────────────────
@@ -66,6 +67,12 @@ function GlassOrb({
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
+const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  google_failed: "Google sign-in failed. Please try again or use your email and password.",
+  google_not_configured: "Google sign-in is not yet configured. Please use your email and password.",
+  session_error: "A session error occurred. Please try again.",
+};
+
 export default function Login() {
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("admin");
@@ -73,6 +80,22 @@ export default function Login() {
   const loginMutation = useLogin();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const search = useSearch();
+
+  // Show a toast if the user was redirected back with an OAuth error
+  useEffect(() => {
+    const params = new URLSearchParams(search);
+    const error = params.get("error");
+    if (error && OAUTH_ERROR_MESSAGES[error]) {
+      toast({
+        title: "Sign-in failed",
+        description: OAUTH_ERROR_MESSAGES[error],
+        variant: "destructive",
+      });
+      // Remove the error param from URL without triggering re-render loop
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,10 +106,13 @@ export default function Login() {
           queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
           setLocation("/");
         },
-        onError: () => {
+        onError: (err: any) => {
+          const message =
+            err?.response?.data?.error ??
+            "Please check your credentials and try again.";
           toast({
             title: "Login failed",
-            description: "Please check your credentials and try again.",
+            description: message,
             variant: "destructive",
           });
         },
@@ -210,6 +236,19 @@ export default function Login() {
                   {loginMutation.isPending ? "Signing in…" : "Sign in"}
                 </Button>
               </form>
+
+              {/* ── OR divider ────────────────────────────────────────── */}
+              <div className="relative my-5">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t border-border/50" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-card px-2 text-muted-foreground/70 tracking-wider">or</span>
+                </div>
+              </div>
+
+              <GoogleSignInButton />
+
               <p className="mt-5 text-center text-sm text-muted-foreground">
                 Demo credentials: admin&nbsp;/&nbsp;admin
               </p>

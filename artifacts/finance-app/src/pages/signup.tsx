@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { BubbleLogo } from "@/components/bubble-logo";
+import { GoogleSignInButton } from "@/components/google-sign-in-button";
 import { useToast } from "@/hooks/use-toast";
 
 // ── Glass bubble decoration ───────────────────────────────────────────────────
@@ -229,7 +230,19 @@ export default function Signup() {
                 </Button>
               </form>
 
-              <p className="mt-6 text-center text-sm text-muted-foreground">
+              {/* ── OR divider ────────────────────────────────────────── */}
+              <div className="relative my-5">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t border-border/50" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-card px-2 text-muted-foreground/70 tracking-wider">or</span>
+                </div>
+              </div>
+
+              <GoogleSignInButton label="Sign up with Google" />
+
+              <p className="mt-5 text-center text-sm text-muted-foreground">
                 Already have an account?{" "}
                 <Link
                   href="/login"

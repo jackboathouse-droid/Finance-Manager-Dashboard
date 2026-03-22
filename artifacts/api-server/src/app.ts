@@ -4,6 +4,7 @@ import pinoHttp from "pino-http";
 import session from "express-session";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import passport from "./lib/google-auth";
 
 const app: Express = express();
 
@@ -32,15 +33,20 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use(
   session({
-    secret: process.env.SESSION_SECRET ?? "finance-app-secret-key-dev",
+    secret: process.env["SESSION_SECRET"] ?? "finance-app-secret-key-dev",
     resave: false,
     saveUninitialized: false,
     cookie: {
-      secure: false,
+      secure: process.env["NODE_ENV"] === "production",
+      httpOnly: true,
+      sameSite: "lax",
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     },
   })
 );
+
+// Initialize passport (no persistent sessions — we manage sessions via express-session)
+app.use(passport.initialize());
 
 app.use("/api", router);
 
