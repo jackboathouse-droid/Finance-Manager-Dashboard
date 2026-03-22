@@ -12,6 +12,8 @@ export interface Account {
   name: string;
   type: AccountType;
   person: string;
-  /** Calculated from transactions */
+  /** User-provided opening balance */
+  starting_balance?: number;
+  /** Calculated from transactions plus starting balance */
   balance?: number;
 }

@@ -50,7 +50,9 @@ export interface Account {
   name: string;
   type: AccountType;
   person: string;
-  /** Calculated from transactions */
+  /** User-provided opening balance */
+  starting_balance?: number;
+  /** Calculated from transactions plus starting balance */
   balance?: number;
 }
 
@@ -66,6 +68,8 @@ export interface CreateAccountRequest {
   name: string;
   type: CreateAccountRequestType;
   person: string;
+  /** Opening balance for this account (optional, defaults to 0) */
+  starting_balance?: number;
 }
 
 export type CategoryType = (typeof CategoryType)[keyof typeof CategoryType];

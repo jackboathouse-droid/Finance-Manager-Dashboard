@@ -136,7 +136,7 @@ router.get("/reports/balance-sheet", async (req, res) => {
       .where(eq(accountsTable.user_id, userId))
       .orderBy(accountsTable.name);
 
-    // Calculate balance for each account from ALL transactions (cumulative)
+    // Calculate balance for each account: starting_balance + sum(transactions)
     const balances = await Promise.all(
       accounts.map(async (acc) => {
         const txConds: any[] = [
@@ -150,10 +150,11 @@ router.get("/reports/balance-sheet", async (req, res) => {
           .from(transactionsTable)
           .where(and(...txConds));
 
+        const startingBal = parseFloat((acc as any).starting_balance ?? "0");
         return {
           account: acc.name,
           type: acc.type,
-          balance: parseFloat(result?.balance ?? "0"),
+          balance: startingBal + parseFloat(result?.balance ?? "0"),
         };
       })
     );

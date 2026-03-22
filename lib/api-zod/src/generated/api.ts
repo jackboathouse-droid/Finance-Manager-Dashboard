@@ -59,7 +59,14 @@ export const GetAccountsResponseItem = zod.object({
   name: zod.string(),
   type: zod.enum(["bank", "credit_card"]),
   person: zod.string(),
-  balance: zod.number().optional().describe("Calculated from transactions"),
+  starting_balance: zod
+    .number()
+    .optional()
+    .describe("User-provided opening balance"),
+  balance: zod
+    .number()
+    .optional()
+    .describe("Calculated from transactions plus starting balance"),
 });
 export const GetAccountsResponse = zod.array(GetAccountsResponseItem);
 
@@ -70,6 +77,10 @@ export const CreateAccountBody = zod.object({
   name: zod.string(),
   type: zod.enum(["bank", "credit_card"]),
   person: zod.string(),
+  starting_balance: zod
+    .number()
+    .optional()
+    .describe("Opening balance for this account (optional, defaults to 0)"),
 });
 
 /**
@@ -84,7 +95,14 @@ export const GetAccountResponse = zod.object({
   name: zod.string(),
   type: zod.enum(["bank", "credit_card"]),
   person: zod.string(),
-  balance: zod.number().optional().describe("Calculated from transactions"),
+  starting_balance: zod
+    .number()
+    .optional()
+    .describe("User-provided opening balance"),
+  balance: zod
+    .number()
+    .optional()
+    .describe("Calculated from transactions plus starting balance"),
 });
 
 /**
@@ -98,6 +116,10 @@ export const UpdateAccountBody = zod.object({
   name: zod.string(),
   type: zod.enum(["bank", "credit_card"]),
   person: zod.string(),
+  starting_balance: zod
+    .number()
+    .optional()
+    .describe("Opening balance for this account (optional, defaults to 0)"),
 });
 
 export const UpdateAccountResponse = zod.object({
@@ -105,7 +127,14 @@ export const UpdateAccountResponse = zod.object({
   name: zod.string(),
   type: zod.enum(["bank", "credit_card"]),
   person: zod.string(),
-  balance: zod.number().optional().describe("Calculated from transactions"),
+  starting_balance: zod
+    .number()
+    .optional()
+    .describe("User-provided opening balance"),
+  balance: zod
+    .number()
+    .optional()
+    .describe("Calculated from transactions plus starting balance"),
 });
 
 /**

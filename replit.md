@@ -40,14 +40,14 @@ artifacts-monorepo/
 
 - **Dashboard**: Total income/expenses/net cash flow, monthly line chart, spending pie chart, budget vs actual bar chart
 - **Transactions**: Add, edit, delete, filter by month/category/account, CSV import
-- **Accounts**: Bank and credit card accounts with calculated balances
+- **Accounts**: Bank and credit card accounts with calculated balances (starting_balance + transaction sum)
 - **Budgets**: Set monthly budgets per category, see variance vs actual spending
 - **Auth**: Session-based login with registration. Demo account: admin/admin. New accounts sign up with email + password (bcryptjs, 12 rounds).
 
 ## Database Schema
 
 - `users` — id, full_name, email (unique), password_hash, auth_provider, role (admin|user), google_id, profile_picture_url, created_at
-- `accounts` — id, name, type (bank|credit_card), person, user_id (FK → users)
+- `accounts` — id, name, type (bank|credit_card), person, user_id (FK → users), starting_balance (numeric, default 0)
 - `categories` — id, name, type (income|expense) — shared/global, no user_id
 - `subcategories` — id, name, category_id, type — shared/global
 - `transactions` — id, date, description, account_id, category_id, subcategory_id, amount, person, type, user_id (FK → users)

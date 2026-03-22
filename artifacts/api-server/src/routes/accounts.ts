@@ -5,6 +5,20 @@ import { eq, and, sql } from "drizzle-orm";
 
 const router: IRouter = Router();
 
+/** Compute balance = starting_balance + sum(transactions) */
+const balanceExpr = (accountId: number, userId: number) =>
+  db
+    .select({
+      txSum: sql<string>`COALESCE(SUM(${transactionsTable.amount}), 0)`,
+    })
+    .from(transactionsTable)
+    .where(
+      and(
+        eq(transactionsTable.account_id, accountId),
+        eq(transactionsTable.user_id, userId)
+      )
+    );
+
 router.get("/accounts", async (req, res) => {
   try {
     const userId = req.session?.userId;
@@ -18,18 +32,13 @@ router.get("/accounts", async (req, res) => {
 
     const accountsWithBalance = await Promise.all(
       accounts.map(async (account) => {
-        const result = await db
-          .select({ balance: sql<string>`COALESCE(SUM(${transactionsTable.amount}), 0)` })
-          .from(transactionsTable)
-          .where(
-            and(
-              eq(transactionsTable.account_id, account.id),
-              eq(transactionsTable.user_id, userId)
-            )
-          );
+        const [result] = await balanceExpr(account.id, userId);
+        const txSum = parseFloat(result?.txSum ?? "0");
+        const startingBal = parseFloat(account.starting_balance ?? "0");
         return {
           ...account,
-          balance: parseFloat(result[0]?.balance ?? "0"),
+          starting_balance: startingBal,
+          balance: startingBal + txSum,
         };
       })
     );
@@ -45,12 +54,25 @@ router.post("/accounts", async (req, res) => {
     const userId = req.session?.userId;
     if (!userId) return res.status(401).json({ error: "Authentication required." });
 
-    const { name, type, person } = req.body as { name: string; type: string; person: string };
+    const { name, type, person, starting_balance } = req.body as {
+      name: string;
+      type: string;
+      person: string;
+      starting_balance?: number;
+    };
+
+    const startingBal = typeof starting_balance === "number" ? starting_balance : 0;
+
     const [account] = await db
       .insert(accountsTable)
-      .values({ name, type, person, user_id: userId })
+      .values({ name, type, person, user_id: userId, starting_balance: String(startingBal) })
       .returning();
-    res.status(201).json({ ...account, balance: 0 });
+
+    res.status(201).json({
+      ...account,
+      starting_balance: startingBal,
+      balance: startingBal,
+    });
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Failed to create account" });
@@ -70,16 +92,11 @@ router.get("/accounts/:id", async (req, res) => {
 
     if (!account) return res.status(404).json({ error: "Account not found" });
 
-    const result = await db
-      .select({ balance: sql<string>`COALESCE(SUM(${transactionsTable.amount}), 0)` })
-      .from(transactionsTable)
-      .where(
-        and(
-          eq(transactionsTable.account_id, id),
-          eq(transactionsTable.user_id, userId)
-        )
-      );
-    res.json({ ...account, balance: parseFloat(result[0]?.balance ?? "0") });
+    const [result] = await balanceExpr(id, userId);
+    const txSum = parseFloat(result?.txSum ?? "0");
+    const startingBal = parseFloat(account.starting_balance ?? "0");
+
+    res.json({ ...account, starting_balance: startingBal, balance: startingBal + txSum });
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Failed to fetch account" });
@@ -92,26 +109,31 @@ router.put("/accounts/:id", async (req, res) => {
     if (!userId) return res.status(401).json({ error: "Authentication required." });
 
     const id = parseInt(req.params.id);
-    const { name, type, person } = req.body as { name: string; type: string; person: string };
+    const { name, type, person, starting_balance } = req.body as {
+      name: string;
+      type: string;
+      person: string;
+      starting_balance?: number;
+    };
+
+    const updateData: Record<string, unknown> = { name, type, person };
+    if (typeof starting_balance === "number") {
+      updateData.starting_balance = String(starting_balance);
+    }
 
     const [account] = await db
       .update(accountsTable)
-      .set({ name, type, person })
+      .set(updateData)
       .where(and(eq(accountsTable.id, id), eq(accountsTable.user_id, userId)))
       .returning();
 
     if (!account) return res.status(404).json({ error: "Account not found" });
 
-    const result = await db
-      .select({ balance: sql<string>`COALESCE(SUM(${transactionsTable.amount}), 0)` })
-      .from(transactionsTable)
-      .where(
-        and(
-          eq(transactionsTable.account_id, id),
-          eq(transactionsTable.user_id, userId)
-        )
-      );
-    res.json({ ...account, balance: parseFloat(result[0]?.balance ?? "0") });
+    const [result] = await balanceExpr(id, userId);
+    const txSum = parseFloat(result?.txSum ?? "0");
+    const startingBal = parseFloat(account.starting_balance ?? "0");
+
+    res.json({ ...account, starting_balance: startingBal, balance: startingBal + txSum });
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Failed to update account" });

@@ -11,4 +11,6 @@ export interface CreateAccountRequest {
   name: string;
   type: CreateAccountRequestType;
   person: string;
+  /** Opening balance for this account (optional, defaults to 0) */
+  starting_balance?: number;
 }

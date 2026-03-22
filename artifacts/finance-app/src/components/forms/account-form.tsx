@@ -18,11 +18,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Info } from "lucide-react";
 
 const formSchema = z.object({
   name: z.string().min(1, "Name is required"),
   type: z.enum(["bank", "credit_card"]),
   person: z.string().min(1, "Owner is required"),
+  starting_balance: z.coerce
+    .number({ invalid_type_error: "Must be a number" })
+    .optional()
+    .default(0),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -36,7 +47,7 @@ export function AccountForm({
 }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  
+
   const createMutation = useCreateAccount();
   const updateMutation = useUpdateAccount();
 
@@ -44,15 +55,23 @@ export function AccountForm({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: account?.name || "",
-      type: account?.type || "bank",
+      type: (account?.type as "bank" | "credit_card") || "bank",
       person: account?.person || "",
+      starting_balance: (account as any)?.starting_balance ?? 0,
     },
   });
 
   const onSubmit = (values: FormValues) => {
+    const payload = {
+      name: values.name,
+      type: values.type,
+      person: values.person,
+      starting_balance: values.starting_balance ?? 0,
+    };
+
     if (account) {
       updateMutation.mutate(
-        { id: account.id, data: values },
+        { id: account.id, data: payload },
         {
           onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["/api/accounts"] });
@@ -63,7 +82,7 @@ export function AccountForm({
       );
     } else {
       createMutation.mutate(
-        { data: values },
+        { data: payload },
         {
           onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["/api/accounts"] });
@@ -109,6 +128,44 @@ export function AccountForm({
         {form.formState.errors.person && (
           <p className="text-sm text-destructive">{form.formState.errors.person.message}</p>
         )}
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center gap-1.5">
+          <Label htmlFor="starting_balance">Starting Balance</Label>
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+              </TooltipTrigger>
+              <TooltipContent className="max-w-[220px] text-xs">
+                Enter your current balance to start tracking this account accurately. Use a negative
+                number for credit card debt.
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+        <div className="relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm select-none">
+            $
+          </span>
+          <Input
+            id="starting_balance"
+            type="number"
+            step="0.01"
+            placeholder="0.00"
+            className="pl-7"
+            {...form.register("starting_balance")}
+          />
+        </div>
+        {form.formState.errors.starting_balance && (
+          <p className="text-sm text-destructive">
+            {form.formState.errors.starting_balance.message}
+          </p>
+        )}
+        <p className="text-xs text-muted-foreground">
+          This will be added to your account balance before any transactions.
+        </p>
       </div>
 
       <div className="flex justify-end gap-3 pt-4">

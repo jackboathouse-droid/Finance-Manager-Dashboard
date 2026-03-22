@@ -817,9 +817,12 @@ components:
           enum: [bank, credit_card]
         person:
           type: string
+        starting_balance:
+          type: number
+          description: User-provided opening balance
         balance:
           type: number
-          description: Calculated from transactions
+          description: Calculated from transactions plus starting balance
       required:
         - id
         - name
@@ -836,6 +839,9 @@ components:
           enum: [bank, credit_card]
         person:
           type: string
+        starting_balance:
+          type: number
+          description: Opening balance for this account (optional, defaults to 0)
       required:
         - name
         - type

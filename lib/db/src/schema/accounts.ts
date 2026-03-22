@@ -1,4 +1,4 @@
-import { pgTable, serial, text, varchar, integer } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, varchar, integer, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
@@ -9,6 +9,7 @@ export const accountsTable = pgTable("accounts", {
   type: varchar("type", { length: 20 }).notNull(), // bank, credit_card
   person: text("person").notNull(),
   user_id: integer("user_id").references(() => usersTable.id),
+  starting_balance: numeric("starting_balance", { precision: 12, scale: 2 }).notNull().default("0"),
 });
 
 export const insertAccountSchema = createInsertSchema(accountsTable).omit({ id: true });
