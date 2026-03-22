@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { seedDefaultCategories } from "./seed";
+import { seedDefaultCategories, ensureAdminUser } from "./seed";
 
 const rawPort = process.env["PORT"];
 
@@ -16,7 +16,7 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-seedDefaultCategories()
+Promise.all([seedDefaultCategories(), ensureAdminUser()])
   .then(() => {
     app.listen(port, (err) => {
       if (err) {

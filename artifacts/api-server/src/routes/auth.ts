@@ -2,13 +2,14 @@ import { Router, type IRouter, type Request, type Response, type NextFunction } 
 import bcrypt from "bcryptjs";
 import { db } from "@workspace/db";
 import { usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, count } from "drizzle-orm";
 import passport from "../lib/google-auth";
 import { googleOAuthEnabled, getFrontendBase } from "../lib/google-auth";
 
 const router: IRouter = Router();
 
 const SALT_ROUNDS = 12;
+const MAX_USERS = 5;
 
 declare module "express-session" {
   interface SessionData {
@@ -17,21 +18,32 @@ declare module "express-session" {
     email?: string;
     fullName?: string;
     userId?: number;
+    role?: string;
     profilePicture?: string;
   }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function setUserSession(req: Request, user: { id: number; email: string; full_name: string; profile_picture_url?: string | null }) {
+function setUserSession(
+  req: Request,
+  user: { id: number; email: string; full_name: string; role: string; profile_picture_url?: string | null }
+) {
   req.session.authenticated = true;
   req.session.username = user.email;
   req.session.email = user.email;
   req.session.fullName = user.full_name;
   req.session.userId = user.id;
+  req.session.role = user.role;
   if (user.profile_picture_url) {
     req.session.profilePicture = user.profile_picture_url;
   }
+}
+
+/** Normalize login identifier: "admin" → "admin@bubble.app" */
+function normalizeLoginId(raw: string): string {
+  const trimmed = raw.trim().toLowerCase();
+  return trimmed === "admin" ? "admin@bubble.app" : trimmed;
 }
 
 // ── Register (email + password) ───────────────────────────────────────────────
@@ -44,6 +56,7 @@ router.post("/auth/register", async (req, res) => {
       password?: string;
     };
 
+    // Validation
     if (!fullName?.trim()) {
       return res.status(400).json({ error: "Full name is required." });
     }
@@ -58,6 +71,14 @@ router.post("/auth/register", async (req, res) => {
       return res.status(400).json({ error: "Password must be at least 8 characters." });
     }
 
+    // 5-user cap
+    const [{ total }] = await db.select({ total: count() }).from(usersTable);
+    if (total >= MAX_USERS) {
+      return res.status(403).json({
+        error: "User limit reached for testing phase. No new registrations are being accepted.",
+      });
+    }
+
     const normalizedEmail = email.trim().toLowerCase();
 
     const [existing] = await db
@@ -67,7 +88,9 @@ router.post("/auth/register", async (req, res) => {
 
     if (existing) {
       if (existing.auth_provider === "google") {
-        return res.status(400).json({ error: "This email is linked to a Google account. Please sign in with Google." });
+        return res.status(400).json({
+          error: "This email is linked to a Google account. Please sign in with Google.",
+        });
       }
       return res.status(400).json({ error: "An account with that email already exists." });
     }
@@ -81,10 +104,13 @@ router.post("/auth/register", async (req, res) => {
         email: normalizedEmail,
         password_hash,
         auth_provider: "email",
+        role: "user",
       })
       .returning();
 
     setUserSession(req, newUser);
+
+    req.log.info({ userId: newUser.id, email: newUser.email }, "New user registered");
 
     return res.status(201).json({ success: true, username: normalizedEmail });
   } catch (err) {
@@ -100,18 +126,10 @@ router.post("/auth/login", async (req, res) => {
     const { username, password } = req.body as { username: string; password: string };
 
     if (!username || !password) {
-      return res.status(401).json({ error: "Credentials are required." });
+      return res.status(400).json({ error: "Email and password are required." });
     }
 
-    // Legacy hardcoded admin account (kept for backward compatibility)
-    if (username === "admin" && password === "admin") {
-      req.session.authenticated = true;
-      req.session.username = "admin";
-      req.session.fullName = "Admin";
-      return res.json({ success: true, username: "admin" });
-    }
-
-    const normalizedEmail = username.trim().toLowerCase();
+    const normalizedEmail = normalizeLoginId(username);
 
     const [user] = await db
       .select()
@@ -119,20 +137,26 @@ router.post("/auth/login", async (req, res) => {
       .where(eq(usersTable.email, normalizedEmail));
 
     if (!user) {
+      req.log.warn({ email: normalizedEmail }, "Login attempt: user not found");
       return res.status(401).json({ error: "Invalid email or password." });
     }
 
-    // User signed up with Google — they have no password
+    // Google-only account (no password set)
     if (!user.password_hash) {
-      return res.status(401).json({ error: "This account uses Google Sign-In. Please click \"Continue with Google\"." });
+      return res.status(401).json({
+        error: 'This account uses Google Sign-In. Please click "Continue with Google".',
+      });
     }
 
     const passwordMatch = await bcrypt.compare(password, user.password_hash);
     if (!passwordMatch) {
+      req.log.warn({ email: normalizedEmail }, "Login attempt: incorrect password");
       return res.status(401).json({ error: "Invalid email or password." });
     }
 
     setUserSession(req, user);
+
+    req.log.info({ userId: user.id, email: user.email, role: user.role }, "User logged in");
 
     return res.json({ success: true, username: user.email });
   } catch (err) {
@@ -145,7 +169,6 @@ router.post("/auth/login", async (req, res) => {
 
 router.get("/auth/google", (req: Request, res: Response, next: NextFunction) => {
   if (!googleOAuthEnabled) {
-    // Redirect back to login with a clear error message
     return res.redirect(`${getFrontendBase()}/login?error=google_not_configured`);
   }
   passport.authenticate("google", {
@@ -168,22 +191,21 @@ router.get("/auth/google/callback", (req: Request, res: Response, next: NextFunc
         return res.redirect(`${frontendBase}/login?error=google_failed`);
       }
 
-      // Establish our own session
       setUserSession(req, user);
 
-      // Save session explicitly before redirecting so the cookie is set
       req.session.save((saveErr) => {
         if (saveErr) {
           req.log.error({ saveErr }, "Session save error after Google OAuth");
           return res.redirect(`${frontendBase}/login?error=session_error`);
         }
+        req.log.info({ userId: user.id, email: user.email }, "Google OAuth login");
         return res.redirect(`${frontendBase}/`);
       });
     }
   )(req, res, next);
 });
 
-// ── Google OAuth — status (for UI) ───────────────────────────────────────────
+// ── Google OAuth — status ─────────────────────────────────────────────────────
 
 router.get("/auth/google/status", (_req, res) => {
   res.json({ enabled: googleOAuthEnabled });
@@ -192,8 +214,10 @@ router.get("/auth/google/status", (_req, res) => {
 // ── Logout ────────────────────────────────────────────────────────────────────
 
 router.post("/auth/logout", (req, res) => {
+  const userId = req.session?.userId;
   req.session.destroy(() => {
-    res.json({ message: "Logged out" });
+    if (userId) req.log.info({ userId }, "User logged out");
+    res.json({ message: "Logged out successfully." });
   });
 });
 
@@ -206,6 +230,7 @@ router.get("/auth/me", (req, res) => {
       authenticated: true,
       fullName: req.session.fullName,
       email: req.session.email,
+      role: req.session.role,
       profilePicture: req.session.profilePicture,
     });
   } else {

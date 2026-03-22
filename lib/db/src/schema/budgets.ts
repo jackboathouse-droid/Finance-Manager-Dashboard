@@ -3,6 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { categoriesTable } from "./categories";
 import { subcategoriesTable } from "./subcategories";
+import { usersTable } from "./users";
 
 export const budgetsTable = pgTable("budgets", {
   id: serial("id").primaryKey(),
@@ -14,6 +15,7 @@ export const budgetsTable = pgTable("budgets", {
   }),
   month: varchar("month", { length: 7 }).notNull(), // YYYY-MM
   budget_amount: numeric("budget_amount", { precision: 12, scale: 2 }).notNull(),
+  user_id: integer("user_id").references(() => usersTable.id),
 });
 
 export const insertBudgetSchema = createInsertSchema(budgetsTable).omit({ id: true });

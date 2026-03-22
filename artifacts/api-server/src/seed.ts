@@ -1,5 +1,7 @@
 import { db } from "@workspace/db";
-import { categoriesTable, subcategoriesTable } from "@workspace/db";
+import { categoriesTable, subcategoriesTable, usersTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
+import bcrypt from "bcryptjs";
 
 type CategorySeed = {
   name: string;
@@ -117,4 +119,34 @@ export async function seedDefaultCategories() {
   }
 
   console.log("[seed] Inserted default categories and subcategories.");
+}
+
+/**
+ * Ensures the admin account exists in the database.
+ * Creates it on first run; safely skips if already present.
+ */
+export async function ensureAdminUser() {
+  const ADMIN_EMAIL = "admin@bubble.app";
+  const ADMIN_PASSWORD = "admin";
+
+  const [existing] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(eq(usersTable.email, ADMIN_EMAIL));
+
+  if (existing) {
+    return; // Admin already exists
+  }
+
+  const password_hash = await bcrypt.hash(ADMIN_PASSWORD, 12);
+
+  await db.insert(usersTable).values({
+    full_name: "Admin",
+    email: ADMIN_EMAIL,
+    password_hash,
+    auth_provider: "email",
+    role: "admin",
+  });
+
+  console.log("[seed] Admin user created: admin@bubble.app / admin");
 }

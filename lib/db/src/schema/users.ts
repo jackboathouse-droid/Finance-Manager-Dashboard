@@ -6,6 +6,7 @@ export const usersTable = pgTable("users", {
   email: text("email").notNull().unique(),
   password_hash: text("password_hash"), // nullable for Google-only users
   auth_provider: text("auth_provider").notNull().default("email"), // "email" | "google"
+  role: text("role").notNull().default("user"), // "admin" | "user"
   google_id: text("google_id").unique(),
   profile_picture_url: text("profile_picture_url"),
   created_at: timestamp("created_at").defaultNow().notNull(),

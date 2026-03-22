@@ -46,12 +46,12 @@ artifacts-monorepo/
 
 ## Database Schema
 
-- `accounts` — id, name, type (bank|credit_card), person
-- `categories` — id, name, type (income|expense)
-- `subcategories` — id, name, category_id, type
-- `transactions` — id, date, description, account_id, category_id, subcategory_id, amount, person, type
-- `budgets` — id, category_id, subcategory_id, month (YYYY-MM), budget_amount
-- `users` — id, full_name, email (unique), password_hash, created_at
+- `users` — id, full_name, email (unique), password_hash, auth_provider, role (admin|user), google_id, profile_picture_url, created_at
+- `accounts` — id, name, type (bank|credit_card), person, user_id (FK → users)
+- `categories` — id, name, type (income|expense) — shared/global, no user_id
+- `subcategories` — id, name, category_id, type — shared/global
+- `transactions` — id, date, description, account_id, category_id, subcategory_id, amount, person, type, user_id (FK → users)
+- `budgets` — id, category_id, subcategory_id, month (YYYY-MM), budget_amount, user_id (FK → users)
 
 ## Key API Routes
 
@@ -65,9 +65,15 @@ artifacts-monorepo/
 - `/api/budgets` CRUD (filter by `month`)
 - `/api/dashboard/summary`, `/api/dashboard/monthly-chart`, `/api/dashboard/category-chart`, `/api/dashboard/budget-vs-actual`
 
-## Auth
+## Auth & Multi-user
 
-Session-based auth using `express-session`. Demo credentials: `admin` / `admin`. New users register at `/signup` with email + password (bcrypt hashed). Login accepts email (for registered users) or "admin" (legacy). Session stores username, email, fullName, userId.
+Session-based auth using `express-session`. 
+- Demo credentials: `admin@bubble.app` / `admin` (also accepts "admin" as shorthand username)
+- Admin user seeded on startup via `ensureAdminUser()` in seed.ts
+- Registration limited to 5 users (testing phase cap)
+- All data routes (accounts, transactions, budgets, dashboard) filter by `req.session.userId` — full user isolation
+- Session stores: username, email, fullName, userId, role, profilePicture
+- Google OAuth supported via passport-google-oauth20
 
 ## Development
 

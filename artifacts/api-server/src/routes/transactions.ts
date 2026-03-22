@@ -10,53 +10,53 @@ import { eq, and, sql } from "drizzle-orm";
 
 const router: IRouter = Router();
 
+const TX_SELECT = {
+  id: transactionsTable.id,
+  date: transactionsTable.date,
+  description: transactionsTable.description,
+  account_id: transactionsTable.account_id,
+  category_id: transactionsTable.category_id,
+  subcategory_id: transactionsTable.subcategory_id,
+  amount: transactionsTable.amount,
+  person: transactionsTable.person,
+  type: transactionsTable.type,
+  account_name: accountsTable.name,
+  category_name: categoriesTable.name,
+  subcategory_name: subcategoriesTable.name,
+};
+
+function withJoins(q: ReturnType<typeof db.select>) {
+  return (q as any)
+    .from(transactionsTable)
+    .leftJoin(accountsTable, eq(transactionsTable.account_id, accountsTable.id))
+    .leftJoin(categoriesTable, eq(transactionsTable.category_id, categoriesTable.id))
+    .leftJoin(subcategoriesTable, eq(transactionsTable.subcategory_id, subcategoriesTable.id));
+}
+
 router.get("/transactions", async (req, res) => {
   try {
+    const userId = req.session?.userId;
+    if (!userId) return res.status(401).json({ error: "Authentication required." });
+
     const { month, category_id, account_id, type } = req.query as Record<string, string>;
 
-    let conditions: any[] = [];
+    const conditions: any[] = [eq(transactionsTable.user_id, userId)];
 
-    if (month) {
-      conditions.push(sql`to_char(${transactionsTable.date}, 'YYYY-MM') = ${month}`);
-    }
-    if (category_id) {
-      conditions.push(eq(transactionsTable.category_id, parseInt(category_id)));
-    }
-    if (account_id) {
-      conditions.push(eq(transactionsTable.account_id, parseInt(account_id)));
-    }
-    if (type) {
-      conditions.push(eq(transactionsTable.type, type));
-    }
+    if (month) conditions.push(sql`to_char(${transactionsTable.date}, 'YYYY-MM') = ${month}`);
+    if (category_id) conditions.push(eq(transactionsTable.category_id, parseInt(category_id)));
+    if (account_id) conditions.push(eq(transactionsTable.account_id, parseInt(account_id)));
+    if (type) conditions.push(eq(transactionsTable.type, type));
 
     const results = await db
-      .select({
-        id: transactionsTable.id,
-        date: transactionsTable.date,
-        description: transactionsTable.description,
-        account_id: transactionsTable.account_id,
-        category_id: transactionsTable.category_id,
-        subcategory_id: transactionsTable.subcategory_id,
-        amount: transactionsTable.amount,
-        person: transactionsTable.person,
-        type: transactionsTable.type,
-        account_name: accountsTable.name,
-        category_name: categoriesTable.name,
-        subcategory_name: subcategoriesTable.name,
-      })
+      .select(TX_SELECT)
       .from(transactionsTable)
       .leftJoin(accountsTable, eq(transactionsTable.account_id, accountsTable.id))
       .leftJoin(categoriesTable, eq(transactionsTable.category_id, categoriesTable.id))
       .leftJoin(subcategoriesTable, eq(transactionsTable.subcategory_id, subcategoriesTable.id))
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .where(and(...conditions))
       .orderBy(sql`${transactionsTable.date} DESC`);
 
-    res.json(
-      results.map((r) => ({
-        ...r,
-        amount: parseFloat(r.amount),
-      }))
-    );
+    res.json(results.map((r) => ({ ...r, amount: parseFloat(r.amount) })));
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Failed to fetch transactions" });
@@ -65,15 +65,16 @@ router.get("/transactions", async (req, res) => {
 
 router.get("/transactions/people", async (req, res) => {
   try {
+    const userId = req.session?.userId;
+    if (!userId) return res.status(401).json({ error: "Authentication required." });
+
     const results = await db
       .selectDistinct({ person: sql<string>`TRIM(${transactionsTable.person})` })
       .from(transactionsTable)
+      .where(eq(transactionsTable.user_id, userId))
       .orderBy(sql`TRIM(${transactionsTable.person})`);
 
-    const people = results
-      .map((r) => r.person)
-      .filter((p): p is string => Boolean(p));
-
+    const people = results.map((r) => r.person).filter((p): p is string => Boolean(p));
     res.json(people);
   } catch (err) {
     req.log.error(err);
@@ -83,6 +84,9 @@ router.get("/transactions/people", async (req, res) => {
 
 router.post("/transactions", async (req, res) => {
   try {
+    const userId = req.session?.userId;
+    if (!userId) return res.status(401).json({ error: "Authentication required." });
+
     const body = req.body as {
       date: string;
       description: string;
@@ -105,24 +109,12 @@ router.post("/transactions", async (req, res) => {
         amount: String(body.amount),
         person: body.person,
         type: body.type,
+        user_id: userId,
       })
       .returning();
 
     const [enriched] = await db
-      .select({
-        id: transactionsTable.id,
-        date: transactionsTable.date,
-        description: transactionsTable.description,
-        account_id: transactionsTable.account_id,
-        category_id: transactionsTable.category_id,
-        subcategory_id: transactionsTable.subcategory_id,
-        amount: transactionsTable.amount,
-        person: transactionsTable.person,
-        type: transactionsTable.type,
-        account_name: accountsTable.name,
-        category_name: categoriesTable.name,
-        subcategory_name: subcategoriesTable.name,
-      })
+      .select(TX_SELECT)
       .from(transactionsTable)
       .leftJoin(accountsTable, eq(transactionsTable.account_id, accountsTable.id))
       .leftJoin(categoriesTable, eq(transactionsTable.category_id, categoriesTable.id))
@@ -138,6 +130,9 @@ router.post("/transactions", async (req, res) => {
 
 router.post("/transactions/import", async (req, res) => {
   try {
+    const userId = req.session?.userId;
+    if (!userId) return res.status(401).json({ error: "Authentication required." });
+
     const { csv_data } = req.body as { csv_data: string };
     const lines = csv_data.trim().split("\n");
     const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
@@ -148,9 +143,7 @@ router.post("/transactions/import", async (req, res) => {
       try {
         const values = lines[i].split(",").map((v) => v.trim().replace(/^"|"$/g, ""));
         const row: Record<string, string> = {};
-        headers.forEach((h, idx) => {
-          row[h] = values[idx] ?? "";
-        });
+        headers.forEach((h, idx) => { row[h] = values[idx] ?? ""; });
 
         if (!row.date || !row.description || !row.account_id || !row.amount || !row.person || !row.type) {
           errors.push(`Row ${i + 1}: missing required fields`);
@@ -166,6 +159,7 @@ router.post("/transactions/import", async (req, res) => {
           amount: row.amount,
           person: row.person,
           type: row.type,
+          user_id: userId,
         });
         imported++;
       } catch (rowErr) {
@@ -182,27 +176,17 @@ router.post("/transactions/import", async (req, res) => {
 
 router.get("/transactions/:id", async (req, res) => {
   try {
+    const userId = req.session?.userId;
+    if (!userId) return res.status(401).json({ error: "Authentication required." });
+
     const id = parseInt(req.params.id);
     const [tx] = await db
-      .select({
-        id: transactionsTable.id,
-        date: transactionsTable.date,
-        description: transactionsTable.description,
-        account_id: transactionsTable.account_id,
-        category_id: transactionsTable.category_id,
-        subcategory_id: transactionsTable.subcategory_id,
-        amount: transactionsTable.amount,
-        person: transactionsTable.person,
-        type: transactionsTable.type,
-        account_name: accountsTable.name,
-        category_name: categoriesTable.name,
-        subcategory_name: subcategoriesTable.name,
-      })
+      .select(TX_SELECT)
       .from(transactionsTable)
       .leftJoin(accountsTable, eq(transactionsTable.account_id, accountsTable.id))
       .leftJoin(categoriesTable, eq(transactionsTable.category_id, categoriesTable.id))
       .leftJoin(subcategoriesTable, eq(transactionsTable.subcategory_id, subcategoriesTable.id))
-      .where(eq(transactionsTable.id, id));
+      .where(and(eq(transactionsTable.id, id), eq(transactionsTable.user_id, userId)));
 
     if (!tx) return res.status(404).json({ error: "Transaction not found" });
     res.json({ ...tx, amount: parseFloat(tx.amount) });
@@ -214,6 +198,9 @@ router.get("/transactions/:id", async (req, res) => {
 
 router.put("/transactions/:id", async (req, res) => {
   try {
+    const userId = req.session?.userId;
+    if (!userId) return res.status(401).json({ error: "Authentication required." });
+
     const id = parseInt(req.params.id);
     const body = req.body as {
       date: string;
@@ -238,23 +225,10 @@ router.put("/transactions/:id", async (req, res) => {
         person: body.person,
         type: body.type,
       })
-      .where(eq(transactionsTable.id, id));
+      .where(and(eq(transactionsTable.id, id), eq(transactionsTable.user_id, userId)));
 
     const [enriched] = await db
-      .select({
-        id: transactionsTable.id,
-        date: transactionsTable.date,
-        description: transactionsTable.description,
-        account_id: transactionsTable.account_id,
-        category_id: transactionsTable.category_id,
-        subcategory_id: transactionsTable.subcategory_id,
-        amount: transactionsTable.amount,
-        person: transactionsTable.person,
-        type: transactionsTable.type,
-        account_name: accountsTable.name,
-        category_name: categoriesTable.name,
-        subcategory_name: subcategoriesTable.name,
-      })
+      .select(TX_SELECT)
       .from(transactionsTable)
       .leftJoin(accountsTable, eq(transactionsTable.account_id, accountsTable.id))
       .leftJoin(categoriesTable, eq(transactionsTable.category_id, categoriesTable.id))
@@ -271,8 +245,13 @@ router.put("/transactions/:id", async (req, res) => {
 
 router.delete("/transactions/:id", async (req, res) => {
   try {
+    const userId = req.session?.userId;
+    if (!userId) return res.status(401).json({ error: "Authentication required." });
+
     const id = parseInt(req.params.id);
-    await db.delete(transactionsTable).where(eq(transactionsTable.id, id));
+    await db
+      .delete(transactionsTable)
+      .where(and(eq(transactionsTable.id, id), eq(transactionsTable.user_id, userId)));
     res.json({ message: "Transaction deleted" });
   } catch (err) {
     req.log.error(err);

@@ -28,7 +28,7 @@ function currentMonth() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
-/** Build an optional person filter clause — case-insensitive, whitespace-trimmed */
+/** Case-insensitive, whitespace-trimmed person filter */
 function personClause(person?: string) {
   const trimmed = person?.trim();
   if (!trimmed || trimmed.toLowerCase() === "total") return undefined;
@@ -39,6 +39,9 @@ function personClause(person?: string) {
 
 router.get("/dashboard/summary", async (req, res) => {
   try {
+    const userId = req.session?.userId;
+    if (!userId) return res.status(401).json({ error: "Authentication required." });
+
     const month = (req.query.month as string) || currentMonth();
     const person = req.query.person as string | undefined;
     const pc = personClause(person);
@@ -51,6 +54,7 @@ router.get("/dashboard/summary", async (req, res) => {
       .from(transactionsTable)
       .where(
         and(
+          eq(transactionsTable.user_id, userId),
           sql`to_char(${transactionsTable.date}, 'YYYY-MM') = ${month}`,
           pc
         )
@@ -68,12 +72,7 @@ router.get("/dashboard/summary", async (req, res) => {
       }
     }
 
-    res.json({
-      total_income,
-      total_expenses,
-      net_cash_flow: total_income - total_expenses,
-      month,
-    });
+    res.json({ total_income, total_expenses, net_cash_flow: total_income - total_expenses, month });
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Failed to fetch dashboard summary" });
@@ -84,6 +83,9 @@ router.get("/dashboard/summary", async (req, res) => {
 
 router.get("/dashboard/monthly-chart", async (req, res) => {
   try {
+    const userId = req.session?.userId;
+    if (!userId) return res.status(401).json({ error: "Authentication required." });
+
     const person = req.query.person as string | undefined;
     const pc = personClause(person);
 
@@ -96,6 +98,7 @@ router.get("/dashboard/monthly-chart", async (req, res) => {
       .from(transactionsTable)
       .where(
         and(
+          eq(transactionsTable.user_id, userId),
           sql`${transactionsTable.date} >= NOW() - INTERVAL '12 months'`,
           pc
         )
@@ -108,22 +111,13 @@ router.get("/dashboard/monthly-chart", async (req, res) => {
 
     const monthMap: Record<string, { income: number; expenses: number }> = {};
     for (const row of results) {
-      if (!monthMap[row.month]) {
-        monthMap[row.month] = { income: 0, expenses: 0 };
-      }
-      if (row.type === "income") {
-        monthMap[row.month].income = parseFloat(row.total ?? "0");
-      } else if (row.type === "expense") {
+      if (!monthMap[row.month]) monthMap[row.month] = { income: 0, expenses: 0 };
+      if (row.type === "income") monthMap[row.month].income = parseFloat(row.total ?? "0");
+      else if (row.type === "expense")
         monthMap[row.month].expenses = Math.abs(parseFloat(row.total ?? "0"));
-      }
     }
 
-    const chartData = Object.entries(monthMap).map(([month, values]) => ({
-      month,
-      ...values,
-    }));
-
-    res.json(chartData);
+    res.json(Object.entries(monthMap).map(([month, values]) => ({ month, ...values })));
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Failed to fetch monthly chart" });
@@ -134,6 +128,9 @@ router.get("/dashboard/monthly-chart", async (req, res) => {
 
 router.get("/dashboard/category-chart", async (req, res) => {
   try {
+    const userId = req.session?.userId;
+    if (!userId) return res.status(401).json({ error: "Authentication required." });
+
     const month = (req.query.month as string) || currentMonth();
     const person = req.query.person as string | undefined;
     const pc = personClause(person);
@@ -147,6 +144,7 @@ router.get("/dashboard/category-chart", async (req, res) => {
       .leftJoin(categoriesTable, eq(transactionsTable.category_id, categoriesTable.id))
       .where(
         and(
+          eq(transactionsTable.user_id, userId),
           sql`to_char(${transactionsTable.date}, 'YYYY-MM') = ${month}`,
           eq(transactionsTable.type, "expense"),
           pc
@@ -155,15 +153,15 @@ router.get("/dashboard/category-chart", async (req, res) => {
       .groupBy(categoriesTable.name)
       .orderBy(sql`SUM(ABS(${transactionsTable.amount})) DESC`);
 
-    const chartData = results
-      .filter((r) => r.category)
-      .map((r, idx) => ({
-        category: r.category as string,
-        amount: parseFloat(r.amount ?? "0"),
-        color: CHART_COLORS[idx % CHART_COLORS.length],
-      }));
-
-    res.json(chartData);
+    res.json(
+      results
+        .filter((r) => r.category)
+        .map((r, idx) => ({
+          category: r.category as string,
+          amount: parseFloat(r.amount ?? "0"),
+          color: CHART_COLORS[idx % CHART_COLORS.length],
+        }))
+    );
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Failed to fetch category chart" });
@@ -174,6 +172,9 @@ router.get("/dashboard/category-chart", async (req, res) => {
 
 router.get("/dashboard/subcategory-chart", async (req, res) => {
   try {
+    const userId = req.session?.userId;
+    if (!userId) return res.status(401).json({ error: "Authentication required." });
+
     const month = (req.query.month as string) || currentMonth();
     const person = req.query.person as string | undefined;
     const pc = personClause(person);
@@ -189,6 +190,7 @@ router.get("/dashboard/subcategory-chart", async (req, res) => {
       .leftJoin(categoriesTable, eq(transactionsTable.category_id, categoriesTable.id))
       .where(
         and(
+          eq(transactionsTable.user_id, userId),
           sql`to_char(${transactionsTable.date}, 'YYYY-MM') = ${month}`,
           eq(transactionsTable.type, "expense"),
           sql`${transactionsTable.subcategory_id} IS NOT NULL`,
@@ -198,16 +200,16 @@ router.get("/dashboard/subcategory-chart", async (req, res) => {
       .groupBy(subcategoriesTable.name, categoriesTable.name)
       .orderBy(sql`SUM(ABS(${transactionsTable.amount})) DESC`);
 
-    const chartData = results
-      .filter((r) => r.subcategory)
-      .map((r, idx) => ({
-        subcategory: r.subcategory as string,
-        category: r.category ?? "Uncategorised",
-        amount: parseFloat(r.amount ?? "0"),
-        color: CHART_COLORS[idx % CHART_COLORS.length],
-      }));
-
-    res.json(chartData);
+    res.json(
+      results
+        .filter((r) => r.subcategory)
+        .map((r, idx) => ({
+          subcategory: r.subcategory as string,
+          category: r.category ?? "Uncategorised",
+          amount: parseFloat(r.amount ?? "0"),
+          color: CHART_COLORS[idx % CHART_COLORS.length],
+        }))
+    );
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Failed to fetch subcategory chart" });
@@ -218,6 +220,9 @@ router.get("/dashboard/subcategory-chart", async (req, res) => {
 
 router.get("/dashboard/budget-vs-actual", async (req, res) => {
   try {
+    const userId = req.session?.userId;
+    if (!userId) return res.status(401).json({ error: "Authentication required." });
+
     const month = (req.query.month as string) || currentMonth();
     const person = req.query.person as string | undefined;
     const pc = personClause(person);
@@ -232,6 +237,7 @@ router.get("/dashboard/budget-vs-actual", async (req, res) => {
       .leftJoin(categoriesTable, eq(budgetsTable.category_id, categoriesTable.id))
       .where(
         and(
+          eq(budgetsTable.user_id, userId),
           eq(budgetsTable.month, month),
           sql`${budgetsTable.subcategory_id} IS NULL`
         )
@@ -245,6 +251,7 @@ router.get("/dashboard/budget-vs-actual", async (req, res) => {
       .from(transactionsTable)
       .where(
         and(
+          eq(transactionsTable.user_id, userId),
           sql`to_char(${transactionsTable.date}, 'YYYY-MM') = ${month}`,
           eq(transactionsTable.type, "expense"),
           pc
@@ -254,9 +261,7 @@ router.get("/dashboard/budget-vs-actual", async (req, res) => {
 
     const actualMap: Record<number, number> = {};
     for (const row of actuals) {
-      if (row.category_id) {
-        actualMap[row.category_id] = parseFloat(row.actual ?? "0");
-      }
+      if (row.category_id) actualMap[row.category_id] = parseFloat(row.actual ?? "0");
     }
 
     const chartData = budgets
@@ -264,12 +269,7 @@ router.get("/dashboard/budget-vs-actual", async (req, res) => {
       .map((b) => {
         const budget = parseFloat(b.budget_amount ?? "0");
         const actual = actualMap[b.category_id] ?? 0;
-        return {
-          category: b.category_name as string,
-          budget,
-          actual,
-          variance: budget - actual,
-        };
+        return { category: b.category_name as string, budget, actual, variance: budget - actual };
       });
 
     res.json(chartData);

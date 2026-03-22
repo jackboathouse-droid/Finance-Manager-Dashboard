@@ -74,8 +74,8 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
 };
 
 export default function Login() {
-  const [username, setUsername] = useState("admin");
-  const [password, setPassword] = useState("admin");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [, setLocation] = useLocation();
   const loginMutation = useLogin();
   const queryClient = useQueryClient();
@@ -206,14 +206,15 @@ export default function Login() {
             <CardContent className="pt-7 pb-7">
               <form onSubmit={handleLogin} className="space-y-5">
                 <div className="space-y-2">
-                  <Label htmlFor="username">Email / Username</Label>
+                  <Label htmlFor="username">Email</Label>
                   <Input
                     id="username"
+                    type="email"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     className="h-12 bg-background/50"
-                    placeholder="Email or username"
-                    autoComplete="username"
+                    placeholder="you@example.com"
+                    autoComplete="email"
                   />
                 </div>
                 <div className="space-y-2">
@@ -250,7 +251,7 @@ export default function Login() {
               <GoogleSignInButton />
 
               <p className="mt-5 text-center text-sm text-muted-foreground">
-                Demo credentials: admin&nbsp;/&nbsp;admin
+                Demo:&nbsp;<span className="font-mono text-xs">admin@bubble.app</span>&nbsp;/&nbsp;<span className="font-mono text-xs">admin</span>
               </p>
               <p className="mt-3 text-center text-sm text-muted-foreground">
                 Don't have an account?{" "}

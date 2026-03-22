@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 import { accountsTable } from "./accounts";
 import { categoriesTable } from "./categories";
 import { subcategoriesTable } from "./subcategories";
+import { usersTable } from "./users";
 
 export const transactionsTable = pgTable("transactions", {
   id: serial("id").primaryKey(),
@@ -17,6 +18,7 @@ export const transactionsTable = pgTable("transactions", {
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
   person: text("person").notNull(),
   type: varchar("type", { length: 10 }).notNull(), // income, expense, transfer
+  user_id: integer("user_id").references(() => usersTable.id),
 });
 
 export const insertTransactionSchema = createInsertSchema(transactionsTable).omit({ id: true });
