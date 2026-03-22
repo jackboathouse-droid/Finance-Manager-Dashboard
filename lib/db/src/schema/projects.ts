@@ -24,6 +24,8 @@ export const projectContributionsTable = pgTable("project_contributions", {
   user_id: integer("user_id").references(() => usersTable.id).notNull(),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
   note: text("note"),
+  account_id: integer("account_id"),      // source account (nullable)
+  transaction_id: integer("transaction_id"), // linked ledger transaction (nullable)
   contributed_at: timestamp("contributed_at").defaultNow().notNull(),
 });
 
