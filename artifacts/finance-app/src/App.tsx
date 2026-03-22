@@ -15,6 +15,7 @@ import Accounts from "./pages/accounts";
 import Budget from "./pages/budget";
 import Categories from "./pages/categories";
 import Reports from "./pages/reports";
+import Projects from "./pages/projects";
 import NotFound from "./pages/not-found";
 
 const queryClient = new QueryClient();
@@ -59,6 +60,7 @@ function Router() {
       <Route path="/budget" component={() => <ProtectedRoute component={Budget} />} />
       <Route path="/categories" component={() => <ProtectedRoute component={Categories} />} />
       <Route path="/reports" component={() => <ProtectedRoute component={Reports} />} />
+      <Route path="/projects" component={() => <ProtectedRoute component={Projects} />} />
       
       <Route component={NotFound} />
     </Switch>

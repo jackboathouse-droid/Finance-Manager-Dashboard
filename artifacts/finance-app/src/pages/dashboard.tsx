@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   useGetDashboardSummary,
   useGetMonthlyChart,
@@ -34,6 +35,7 @@ import {
   ChevronLeft,
   ChevronRight,
   User,
+  Rocket,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -616,6 +618,89 @@ export default function Dashboard() {
           )}
         </CardContent>
       </Card>
+
+      {/* ── Savings Goals summary ──────────────────────────────────────────── */}
+      <ProjectsSummaryCard />
     </div>
+  );
+}
+
+// ── Savings Goals mini-card for dashboard ─────────────────────────────────────
+
+interface DashProject {
+  id: number;
+  name: string;
+  icon: string;
+  color: string;
+  target_amount: number;
+  current_amount: number;
+  progress_pct: number;
+}
+
+function ProjectsSummaryCard() {
+  const { data: projects = [] } = useQuery<DashProject[]>({
+    queryKey: ["projects/summary"],
+    queryFn: async () => {
+      const res = await fetch("/api/projects/summary", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  if (projects.length === 0) return null;
+
+  return (
+    <Card className="border-border/50 shadow-sm">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <Rocket className="h-4 w-4 text-primary" />
+              Savings Goals
+            </CardTitle>
+            <CardDescription className="text-xs mt-0.5">Active goals progress</CardDescription>
+          </div>
+          <a
+            href="/projects"
+            className="text-xs text-primary font-medium hover:underline underline-offset-4"
+          >
+            View all →
+          </a>
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {projects.map((p) => (
+            <div
+              key={p.id}
+              className="rounded-xl border border-border/50 p-3"
+              style={{ background: p.color + "10" }}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <div
+                  className="h-7 w-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                  style={{ backgroundColor: p.color + "25" }}
+                >
+                  <span className="text-xs" style={{ color: p.color }}>
+                    {p.progress_pct}%
+                  </span>
+                </div>
+                <span className="text-xs font-semibold truncate">{p.name}</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-muted overflow-hidden mb-1.5">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{ width: `${p.progress_pct}%`, backgroundColor: p.color }}
+                />
+              </div>
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>{formatCurrency(p.current_amount)}</span>
+                <span>{formatCurrency(p.target_amount)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }

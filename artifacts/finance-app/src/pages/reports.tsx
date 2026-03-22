@@ -47,6 +47,8 @@ import {
   User,
   Building2,
   CreditCard,
+  Rocket,
+  Trophy,
 } from "lucide-react";
 import { format, subMonths } from "date-fns";
 import { Badge } from "@/components/ui/badge";
@@ -847,6 +849,153 @@ export default function Reports() {
                 )}
               </div>
             )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      {/* SECTION 5 — Savings Goals                                             */}
+      {/* ══════════════════════════════════════════════════════════════════════ */}
+      <ProjectsReportSection />
+    </div>
+  );
+}
+
+// ── Projects report section ───────────────────────────────────────────────────
+
+interface ReportProject {
+  id: number;
+  name: string;
+  color: string;
+  target_amount: number;
+  current_amount: number;
+  progress_pct: number;
+  status: string;
+  deadline: string | null;
+}
+
+function ProjectsReportSection() {
+  const { data: projects = [], isLoading } = useQuery<ReportProject[]>({
+    queryKey: ["projects"],
+    queryFn: async () => {
+      const res = await fetch("/api/projects", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  if (isLoading || projects.length === 0) return null;
+
+  const barData = [...projects]
+    .sort((a, b) => b.progress_pct - a.progress_pct)
+    .slice(0, 10)
+    .map((p) => ({
+      name: p.name,
+      Saved: p.current_amount,
+      Remaining: Math.max(0, p.target_amount - p.current_amount),
+      color: p.color,
+    }));
+
+  const totalSaved = projects.reduce((s, p) => s + p.current_amount, 0);
+  const totalTarget = projects.reduce((s, p) => s + p.target_amount, 0);
+
+  return (
+    <div>
+      <h2 className="text-base font-semibold mb-3 flex items-center gap-2">
+        <Rocket className="h-4 w-4 text-primary" />
+        Savings Goals
+      </h2>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Bar chart */}
+        <Card className="lg:col-span-2">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Progress by goal (saved vs remaining)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {barData.length === 0 ? (
+              <div className="h-[260px] flex items-center justify-center text-muted-foreground text-sm">
+                No goals
+              </div>
+            ) : (
+              <div className="h-[260px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={barData} layout="vertical" barSize={12}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
+                    <XAxis
+                      type="number"
+                      tick={{ fontSize: 10 }}
+                      tickLine={false}
+                      axisLine={false}
+                      tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
+                    />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      tick={{ fontSize: 10 }}
+                      tickLine={false}
+                      axisLine={false}
+                      width={100}
+                    />
+                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: "12px" }} />
+                    <Bar dataKey="Saved" stackId="a" radius={[0, 0, 0, 0]}>
+                      {barData.map((entry, idx) => (
+                        <Cell key={idx} fill={entry.color} />
+                      ))}
+                    </Bar>
+                    <Bar dataKey="Remaining" stackId="a" fill="hsl(var(--muted))" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Summary table */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Goal summary
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y divide-border/50">
+              {projects.map((p) => (
+                <div key={p.id} className="px-4 py-2.5">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium truncate max-w-[130px]">{p.name}</span>
+                    <div className="flex items-center gap-1.5">
+                      {p.status === "completed" && (
+                        <Trophy className="h-3 w-3 text-emerald-500" />
+                      )}
+                      <span className="text-xs font-bold" style={{ color: p.color }}>
+                        {p.progress_pct}%
+                      </span>
+                    </div>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-muted overflow-hidden mb-1">
+                    <div
+                      className="h-full rounded-full"
+                      style={{ width: `${p.progress_pct}%`, backgroundColor: p.color }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>{formatCurrency(p.current_amount)}</span>
+                    <span>{formatCurrency(p.target_amount)}</span>
+                  </div>
+                </div>
+              ))}
+              <div className="px-4 py-2.5 bg-muted/30 flex justify-between text-xs font-semibold">
+                <span>Total saved</span>
+                <span className="text-emerald-500">{formatCurrency(totalSaved)}</span>
+              </div>
+              <div className="px-4 py-2.5 bg-muted/30 flex justify-between text-xs font-semibold">
+                <span>Total target</span>
+                <span>{formatCurrency(totalTarget)}</span>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
