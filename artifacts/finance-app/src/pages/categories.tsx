@@ -501,7 +501,7 @@ export default function Categories() {
     <div className="space-y-8 pb-8">
       {/* Page header */}
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Categories</h1>
+        <h1 className="text-4xl font-display font-bold">Categories</h1>
         <p className="text-muted-foreground mt-1 text-sm">
           Manage how your transactions are organized and reported.
         </p>
