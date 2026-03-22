@@ -60,7 +60,12 @@ const CommandList = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <CommandPrimitive.List
     ref={ref}
-    className={cn("max-h-[300px] overflow-y-auto overflow-x-hidden", className)}
+    className={cn(
+      // Default: scroll at 300 px. Inside CreatableCombobox the parent
+      // PopoverContent overrides this by passing className="max-h-none flex-1".
+      "max-h-[300px] overflow-y-auto overflow-x-hidden scroll-smooth",
+      className
+    )}
     {...props}
   />
 ))

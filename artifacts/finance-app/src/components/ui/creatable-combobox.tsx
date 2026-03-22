@@ -52,10 +52,8 @@ export function CreatableCombobox({
 
   const selected = options.find((o) => o.value === value);
 
-  // Trim is used for matching, but we preserve the original input for display
   const trimmed = search.trim();
 
-  // True if the typed text exactly matches an existing option (case-insensitive)
   const exactMatch = options.some(
     (o) => o.label.toLowerCase() === trimmed.toLowerCase()
   );
@@ -98,19 +96,41 @@ export function CreatableCombobox({
         </Button>
       </PopoverTrigger>
 
+      {/*
+       * PopoverContent is constrained by --radix-popover-content-available-height,
+       * a CSS variable that Radix sets to the remaining viewport space on the
+       * side where the popover opens.  We subtract a small gutter (8px) so the
+       * list never hugs the screen edge.  The Command inside is a flex-column
+       * that fills the full available height; CommandList gets max-h-none so
+       * it is no longer capped at the 300px default and instead scrolls within
+       * the popover container.
+       */}
       <PopoverContent
-        className="w-[var(--radix-popover-trigger-width)] p-0"
+        className="w-[var(--radix-popover-trigger-width)] p-0 flex flex-col overflow-hidden"
+        style={{
+          maxHeight: "calc(var(--radix-popover-content-available-height, 320px) - 8px)",
+        }}
         align="start"
         sideOffset={4}
       >
-        <Command shouldFilter={false}>
+        <Command
+          shouldFilter={false}
+          className="flex flex-col flex-1 overflow-hidden min-h-0"
+        >
+          {/* Search input — always visible at top, never scrolls away */}
           <CommandInput
             ref={inputRef}
             placeholder={searchPlaceholder}
             value={search}
             onValueChange={setSearch}
           />
-          <CommandList>
+
+          {/*
+           * CommandList: max-h-none overrides the 300px from command.tsx so
+           * the list fills whatever height the popover has after the input.
+           * flex-1 + min-h-0 ensure it shrinks properly in the flex chain.
+           */}
+          <CommandList className="flex-1 max-h-none min-h-0 overflow-y-auto overflow-x-hidden scroll-smooth">
             {/* Existing filtered options */}
             <CommandGroup>
               {options
@@ -164,7 +184,7 @@ export function CreatableCombobox({
 
             {/* Empty state when filtered and nothing matches */}
             {trimmed &&
-              exactMatch === false &&
+              !exactMatch &&
               options.filter((o) =>
                 o.label.toLowerCase().includes(trimmed.toLowerCase())
               ).length === 0 && (
