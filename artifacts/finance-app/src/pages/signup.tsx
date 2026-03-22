@@ -113,7 +113,8 @@ export default function Signup() {
         },
         onError: (err: any) => {
           const message =
-            err?.response?.data?.error ??
+            err?.data?.error ??
+            err?.message ??
             "Something went wrong. Please try again.";
           toast({
             title: "Sign up failed",

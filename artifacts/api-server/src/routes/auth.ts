@@ -112,6 +112,10 @@ router.post("/auth/register", async (req, res) => {
 
     req.log.info({ userId: newUser.id, email: newUser.email }, "New user registered");
 
+    await new Promise<void>((resolve, reject) =>
+      req.session.save((err) => (err ? reject(err) : resolve()))
+    );
+
     return res.status(201).json({ success: true, username: normalizedEmail });
   } catch (err) {
     req.log.error(err);
@@ -157,6 +161,10 @@ router.post("/auth/login", async (req, res) => {
     setUserSession(req, user);
 
     req.log.info({ userId: user.id, email: user.email, role: user.role }, "User logged in");
+
+    await new Promise<void>((resolve, reject) =>
+      req.session.save((err) => (err ? reject(err) : resolve()))
+    );
 
     return res.json({ success: true, username: user.email });
   } catch (err) {

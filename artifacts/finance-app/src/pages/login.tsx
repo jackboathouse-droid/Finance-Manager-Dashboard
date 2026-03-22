@@ -108,7 +108,8 @@ export default function Login() {
         },
         onError: (err: any) => {
           const message =
-            err?.response?.data?.error ??
+            err?.data?.error ??
+            err?.message ??
             "Please check your credentials and try again.";
           toast({
             title: "Login failed",
