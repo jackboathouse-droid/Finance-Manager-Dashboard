@@ -30,7 +30,16 @@ export function AppSidebar() {
     <Sidebar className="border-r border-border/50 bg-card">
       <SidebarHeader className="p-6">
         <div className="px-2">
-          <BubbleLogo size="md" />
+          <div
+            style={{
+              display: "inline-block",
+              transform: "scale(1.15)",
+              transformOrigin: "left center",
+              transition: "transform 0.35s ease",
+            }}
+          >
+            <BubbleLogo size="md" />
+          </div>
         </div>
       </SidebarHeader>
       <SidebarContent className="px-4">
