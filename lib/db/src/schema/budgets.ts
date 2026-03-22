@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, numeric, varchar } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, numeric, varchar, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { categoriesTable } from "./categories";
@@ -15,6 +15,7 @@ export const budgetsTable = pgTable("budgets", {
   }),
   month: varchar("month", { length: 7 }).notNull(), // YYYY-MM
   budget_amount: numeric("budget_amount", { precision: 12, scale: 2 }).notNull(),
+  is_recurring: boolean("is_recurring").notNull().default(false),
   user_id: integer("user_id").references(() => usersTable.id),
 });
 

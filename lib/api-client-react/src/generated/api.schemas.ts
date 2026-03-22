@@ -188,6 +188,7 @@ export interface Budget {
   subcategory_id?: number | null;
   month: string;
   budget_amount: number;
+  is_recurring?: boolean;
   category_name?: string | null;
   subcategory_name?: string | null;
 }
@@ -197,6 +198,7 @@ export interface CreateBudgetRequest {
   subcategory_id?: number | null;
   month: string;
   budget_amount: number;
+  is_recurring?: boolean;
 }
 
 export interface DashboardSummary {

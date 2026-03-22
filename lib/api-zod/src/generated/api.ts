@@ -389,6 +389,7 @@ export const GetBudgetsResponseItem = zod.object({
   subcategory_id: zod.number().nullish(),
   month: zod.string(),
   budget_amount: zod.number(),
+  is_recurring: zod.boolean().optional(),
   category_name: zod.string().nullish(),
   subcategory_name: zod.string().nullish(),
 });
@@ -402,6 +403,7 @@ export const CreateBudgetBody = zod.object({
   subcategory_id: zod.number().nullish(),
   month: zod.string(),
   budget_amount: zod.number(),
+  is_recurring: zod.boolean().optional(),
 });
 
 /**
@@ -416,6 +418,7 @@ export const UpdateBudgetBody = zod.object({
   subcategory_id: zod.number().nullish(),
   month: zod.string(),
   budget_amount: zod.number(),
+  is_recurring: zod.boolean().optional(),
 });
 
 export const UpdateBudgetResponse = zod.object({
@@ -424,6 +427,7 @@ export const UpdateBudgetResponse = zod.object({
   subcategory_id: zod.number().nullish(),
   month: zod.string(),
   budget_amount: zod.number(),
+  is_recurring: zod.boolean().optional(),
   category_name: zod.string().nullish(),
   subcategory_name: zod.string().nullish(),
 });

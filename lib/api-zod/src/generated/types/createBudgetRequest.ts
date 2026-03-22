@@ -11,4 +11,5 @@ export interface CreateBudgetRequest {
   subcategory_id?: number | null;
   month: string;
   budget_amount: number;
+  is_recurring?: boolean;
 }
