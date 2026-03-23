@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CreatableCombobox, ComboboxOption } from "@/components/ui/creatable-combobox";
+import { PeopleSelect } from "@/components/ui/people-select";
 import { cn } from "@/lib/utils";
 
 const formSchema = z.object({
@@ -320,14 +321,12 @@ export function TransactionForm({
           )}
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="person" className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
             Person
           </Label>
-          <Input
-            id="person"
-            placeholder="e.g. John"
-            className="h-10"
-            {...form.register("person")}
+          <PeopleSelect
+            value={form.watch("person")}
+            onChange={(name) => form.setValue("person", name, { shouldValidate: true })}
           />
           {form.formState.errors.person && (
             <p className="text-xs text-destructive">{form.formState.errors.person.message}</p>

@@ -1,16 +1,21 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  useGetDashboardSummary,
   useGetMonthlyChart,
-  useGetCategoryChart,
-  useGetSubcategoryChart,
-  useGetBudgetVsActual,
   useGetTransactionPeople,
 } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { format, subMonths } from "date-fns";
+import {
+  format,
+  subMonths,
+  startOfWeek,
+  endOfWeek,
+  addWeeks,
+  subWeeks,
+  isAfter,
+  startOfDay,
+} from "date-fns";
 import {
   LineChart,
   Line,
@@ -36,6 +41,8 @@ import {
   ChevronRight,
   User,
   Rocket,
+  CalendarDays,
+  Calendar,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -46,6 +53,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 const CHART_COLORS = [
   "#4FC3F7",
@@ -76,6 +85,20 @@ function generateMonthOptions() {
 }
 
 const monthOptions = generateMonthOptions();
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function getWeekBounds(weekStart: Date) {
+  const start = startOfWeek(weekStart, { weekStartsOn: 1 }); // Monday
+  const end = endOfWeek(weekStart, { weekStartsOn: 1 });     // Sunday
+  return {
+    start,
+    end,
+    startStr: format(start, "yyyy-MM-dd"),
+    endStr: format(end, "yyyy-MM-dd"),
+    label: `${format(start, "d MMM")} – ${format(end, "d MMM yyyy")}`,
+  };
+}
 
 // ── Empty state placeholder ───────────────────────────────────────────────────
 
@@ -159,7 +182,7 @@ function PersonFilter({
 }) {
   const options = [ALL_LABEL, ...people];
   return (
-    <div className="flex items-center gap-1.5 bg-muted/50 rounded-xl p-1 border border-border/50">
+    <div className="flex items-center gap-1.5 bg-muted/50 rounded-xl p-1 border border-border/50 flex-wrap">
       <User className="h-3.5 w-3.5 text-muted-foreground ml-1.5" />
       {options.map((p) => (
         <button
@@ -179,34 +202,131 @@ function PersonFilter({
   );
 }
 
+// ── View mode toggle ──────────────────────────────────────────────────────────
+
+function ViewModeToggle({
+  value,
+  onChange,
+}: {
+  value: "monthly" | "weekly";
+  onChange: (v: "monthly" | "weekly") => void;
+}) {
+  return (
+    <div className="flex items-center bg-muted/50 rounded-xl p-1 border border-border/50">
+      {(["monthly", "weekly"] as const).map((mode) => (
+        <button
+          key={mode}
+          onClick={() => onChange(mode)}
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150",
+            value === mode
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted"
+          )}
+        >
+          {mode === "monthly" ? (
+            <Calendar className="h-3 w-3" />
+          ) : (
+            <CalendarDays className="h-3 w-3" />
+          )}
+          {mode.charAt(0).toUpperCase() + mode.slice(1)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ── Custom hook — period-aware dashboard data ─────────────────────────────────
+
+type PeriodParams =
+  | { mode: "monthly"; month: string; person?: string }
+  | { mode: "weekly"; startStr: string; endStr: string; person?: string };
+
+function buildQS(params: PeriodParams): string {
+  const qs = new URLSearchParams();
+  if (params.person) qs.set("person", params.person);
+  if (params.mode === "monthly") {
+    qs.set("month", params.month);
+  } else {
+    qs.set("start_date", params.startStr);
+    qs.set("end_date", params.endStr);
+  }
+  return qs.toString();
+}
+
+function useDashboardData(params: PeriodParams) {
+  const qs = buildQS(params);
+
+  const summary = useQuery({
+    queryKey: ["dashboard/summary", qs],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/dashboard/summary?${qs}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load summary");
+      return res.json() as Promise<{ total_income: number; total_expenses: number; net_cash_flow: number }>;
+    },
+  });
+
+  const categoryData = useQuery({
+    queryKey: ["dashboard/category-chart", qs],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/dashboard/category-chart?${qs}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load category chart");
+      return res.json() as Promise<Array<{ category: string; amount: number; color: string }>>;
+    },
+  });
+
+  const subcategoryData = useQuery({
+    queryKey: ["dashboard/subcategory-chart", qs],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/dashboard/subcategory-chart?${qs}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load subcategory chart");
+      return res.json() as Promise<Array<{ subcategory: string; category: string; amount: number; color: string }>>;
+    },
+  });
+
+  const budgetData = useQuery({
+    queryKey: ["dashboard/budget-vs-actual", qs],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/dashboard/budget-vs-actual?${qs}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load budget data");
+      return res.json() as Promise<Array<{ category: string; budget: number; actual: number; variance: number; is_weekly?: boolean }>>;
+    },
+  });
+
+  return { summary, categoryData, subcategoryData, budgetData };
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  const currentMonth = format(new Date(), "yyyy-MM");
-  const [month, setMonth] = useState(currentMonth);
+  const today = new Date();
+  const currentMonthStr = format(today, "yyyy-MM");
+
+  const [viewMode, setViewMode] = useState<"monthly" | "weekly">("monthly");
+  const [month, setMonth] = useState(currentMonthStr);
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(today, { weekStartsOn: 1 }));
   const [person, setPerson] = useState<string>(ALL_LABEL);
 
-  // Fetch distinct person names from the database to drive the filter buttons
   const { data: peopleData = [] } = useGetTransactionPeople();
-
-  // When a person is selected, reset to ALL_LABEL if they disappear from the list
-  // Normalise — when "Total" pass undefined so the backend returns all
-  const personParam =
-    person === ALL_LABEL ? undefined : person || undefined;
-
-  const { data: summary, isLoading: loadingSummary } = useGetDashboardSummary({
-    month,
-    person: personParam,
+  const { data: monthlyData } = useGetMonthlyChart({
+    person: person === ALL_LABEL ? undefined : person,
   });
-  const { data: monthlyData } = useGetMonthlyChart({ person: personParam });
-  const { data: categoryData } = useGetCategoryChart({ month, person: personParam });
-  const { data: subcategoryData } = useGetSubcategoryChart({ month, person: personParam });
-  const { data: budgetData } = useGetBudgetVsActual({ month, person: personParam });
+
+  const personParam = person === ALL_LABEL ? undefined : person;
+  const week = useMemo(() => getWeekBounds(weekStart), [weekStart]);
+
+  const periodParams: PeriodParams =
+    viewMode === "monthly"
+      ? { mode: "monthly", month, person: personParam }
+      : { mode: "weekly", startStr: week.startStr, endStr: week.endStr, person: personParam };
+
+  const { summary, categoryData, subcategoryData, budgetData } = useDashboardData(periodParams);
 
   const selectedMonthLabel =
-    monthOptions.find((m) => m.value === month)?.label ?? format(new Date(), "MMMM yyyy");
+    monthOptions.find((m) => m.value === month)?.label ?? format(today, "MMMM yyyy");
+  const periodLabel = viewMode === "monthly" ? selectedMonthLabel : week.label;
 
-  const netFlow = summary?.net_cash_flow ?? 0;
+  const netFlow = summary.data?.net_cash_flow ?? 0;
   const isPositive = netFlow >= 0;
 
   const navigateMonth = (dir: "prev" | "next") => {
@@ -215,13 +335,22 @@ export default function Dashboard() {
     if (dir === "next" && idx < monthOptions.length - 1) setMonth(monthOptions[idx + 1].value);
   };
 
-  // Map subcategory data to nameKey expected by DonutChart
-  const subcategoryChartData = (subcategoryData ?? []).map((d) => ({
+  const navigateWeek = (dir: "prev" | "next") => {
+    setWeekStart((prev) =>
+      dir === "prev" ? subWeeks(prev, 1) : addWeeks(prev, 1)
+    );
+  };
+
+  const isNextWeekDisabled = isAfter(addWeeks(weekStart, 1), startOfDay(today));
+
+  const subcategoryChartData = (subcategoryData.data ?? []).map((d) => ({
     name: d.subcategory,
     category: d.category,
     amount: d.amount,
     color: d.color,
   }));
+
+  const loadingSummary = summary.isLoading;
 
   return (
     <div className="space-y-6 pb-8">
@@ -232,43 +361,71 @@ export default function Dashboard() {
           <p className="text-muted-foreground mt-1 text-sm">Your financial overview</p>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-          {/* Person filter — driven by distinct person values in the database */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 flex-wrap">
+          {/* Person filter */}
           <PersonFilter people={peopleData} value={person} onChange={setPerson} />
 
-          {/* Month picker */}
-          <div className="flex items-center gap-1.5">
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-9 w-9"
-              onClick={() => navigateMonth("prev")}
-              disabled={monthOptions[0]?.value === month}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Select value={month} onValueChange={setMonth}>
-              <SelectTrigger className="w-[160px] h-9 bg-card">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {monthOptions.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-9 w-9"
-              onClick={() => navigateMonth("next")}
-              disabled={monthOptions[monthOptions.length - 1]?.value === month}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
+          {/* View mode toggle */}
+          <ViewModeToggle value={viewMode} onChange={(v) => setViewMode(v)} />
+
+          {/* Period navigation */}
+          {viewMode === "monthly" ? (
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-9 w-9"
+                onClick={() => navigateMonth("prev")}
+                disabled={monthOptions[0]?.value === month}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Select value={month} onValueChange={setMonth}>
+                <SelectTrigger className="w-[160px] h-9 bg-card">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {monthOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-9 w-9"
+                onClick={() => navigateMonth("next")}
+                disabled={monthOptions[monthOptions.length - 1]?.value === month}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-9 w-9"
+                onClick={() => navigateWeek("prev")}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <div className="h-9 px-3 flex items-center text-sm font-medium bg-card border border-input rounded-md min-w-[190px] justify-center">
+                {week.label}
+              </div>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-9 w-9"
+                onClick={() => navigateWeek("next")}
+                disabled={isNextWeekDisabled}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -281,10 +438,10 @@ export default function Dashboard() {
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                  Total Income
+                  {viewMode === "weekly" ? "Weekly Income" : "Total Income"}
                 </p>
                 <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-                  {loadingSummary ? "—" : formatCurrency(summary?.total_income ?? 0)}
+                  {loadingSummary ? "—" : formatCurrency(summary.data?.total_income ?? 0)}
                 </p>
                 {person !== ALL_LABEL && (
                   <p className="text-xs text-muted-foreground mt-1">{person} only</p>
@@ -304,10 +461,10 @@ export default function Dashboard() {
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                  Total Expenses
+                  {viewMode === "weekly" ? "Weekly Expenses" : "Total Expenses"}
                 </p>
                 <p className="text-2xl font-bold text-red-600 dark:text-red-400">
-                  {loadingSummary ? "—" : formatCurrency(summary?.total_expenses ?? 0)}
+                  {loadingSummary ? "—" : formatCurrency(summary.data?.total_expenses ?? 0)}
                 </p>
                 {person !== ALL_LABEL && (
                   <p className="text-xs text-muted-foreground mt-1">{person} only</p>
@@ -326,7 +483,7 @@ export default function Dashboard() {
             "relative overflow-hidden border-border/50 shadow-sm",
             isPositive
               ? "bg-gradient-to-br from-primary to-cyan-500"
-              : "bg-gradient-to-br from-slate-700 to-slate-800"
+              : "bg-gradient-to-br from-red-500 to-red-600"
           )}
         >
           <CardContent className="relative pt-6 pb-5">
@@ -339,7 +496,7 @@ export default function Dashboard() {
                   {loadingSummary ? "—" : formatCurrency(netFlow)}
                 </p>
                 <p className="text-xs text-white/60 mt-1">
-                  {selectedMonthLabel}
+                  {periodLabel}
                   {person !== ALL_LABEL ? ` · ${person}` : ""}
                 </p>
               </div>
@@ -355,7 +512,7 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      {/* ── Income vs Expenses line chart ───────────────────────────────── */}
+      {/* ── Income vs Expenses line chart (always trailing 12 months) ──── */}
       <Card className="border-border/50 shadow-sm">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
@@ -446,18 +603,18 @@ export default function Dashboard() {
           <CardHeader className="pb-2">
             <CardTitle className="text-base font-semibold">Spending by Category</CardTitle>
             <CardDescription className="text-xs">
-              {selectedMonthLabel}{person !== ALL_LABEL ? ` · ${person}` : ""}
+              {periodLabel}{person !== ALL_LABEL ? ` · ${person}` : ""}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {categoryData && categoryData.length > 0 ? (
+            {categoryData.data && categoryData.data.length > 0 ? (
               <DonutChart
-                data={categoryData.map((d) => ({ ...d, name: d.category }))}
+                data={categoryData.data.map((d) => ({ ...d, name: d.category }))}
                 nameKey="name"
                 valueKey="amount"
               />
             ) : (
-              <ChartEmpty message="No expenses this month" />
+              <ChartEmpty message={`No expenses this ${viewMode === "weekly" ? "week" : "month"}`} />
             )}
           </CardContent>
         </Card>
@@ -467,7 +624,7 @@ export default function Dashboard() {
           <CardHeader className="pb-2">
             <CardTitle className="text-base font-semibold">Spending by Subcategory</CardTitle>
             <CardDescription className="text-xs">
-              {selectedMonthLabel}{person !== ALL_LABEL ? ` · ${person}` : ""}
+              {periodLabel}{person !== ALL_LABEL ? ` · ${person}` : ""}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -478,7 +635,7 @@ export default function Dashboard() {
                 valueKey="amount"
               />
             ) : (
-              <ChartEmpty message="No subcategory data this month" />
+              <ChartEmpty message={`No subcategory data this ${viewMode === "weekly" ? "week" : "month"}`} />
             )}
           </CardContent>
         </Card>
@@ -491,18 +648,25 @@ export default function Dashboard() {
             <div>
               <CardTitle className="text-base font-semibold">Budget vs Actual</CardTitle>
               <CardDescription className="text-xs mt-0.5">
-                {selectedMonthLabel}{person !== ALL_LABEL ? ` · ${person}` : ""}
+                {viewMode === "weekly"
+                  ? `${week.label} · Monthly budget targets`
+                  : `${selectedMonthLabel}${person !== ALL_LABEL ? ` · ${person}` : ""}`}
               </CardDescription>
             </div>
+            {viewMode === "weekly" && (
+              <span className="text-[10px] text-muted-foreground bg-muted/60 border border-border/40 rounded-md px-2 py-1">
+                Budget = monthly target
+              </span>
+            )}
           </div>
         </CardHeader>
         <CardContent>
-          {budgetData && budgetData.length > 0 ? (
+          {budgetData.data && budgetData.data.length > 0 ? (
             <>
               <div className="h-[280px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
-                    data={budgetData}
+                    data={budgetData.data}
                     margin={{ top: 5, right: 10, left: 0, bottom: 5 }}
                     barCategoryGap="30%"
                     barGap={4}
@@ -544,14 +708,14 @@ export default function Dashboard() {
                     />
                     <Bar
                       dataKey="budget"
-                      name="Budget"
+                      name={viewMode === "weekly" ? "Monthly Budget" : "Budget"}
                       fill="hsl(var(--primary))"
                       fillOpacity={0.25}
                       radius={[4, 4, 0, 0]}
                     />
                     <Bar
                       dataKey="actual"
-                      name="Actual"
+                      name={viewMode === "weekly" ? "Weekly Actual" : "Actual"}
                       fill="hsl(var(--primary))"
                       radius={[4, 4, 0, 0]}
                     />
@@ -568,10 +732,10 @@ export default function Dashboard() {
                         Category
                       </th>
                       <th className="text-right px-4 py-2.5 font-semibold text-xs text-muted-foreground uppercase tracking-wider">
-                        Budget
+                        {viewMode === "weekly" ? "Monthly Budget" : "Budget"}
                       </th>
                       <th className="text-right px-4 py-2.5 font-semibold text-xs text-muted-foreground uppercase tracking-wider">
-                        Actual
+                        {viewMode === "weekly" ? "Weekly Actual" : "Actual"}
                       </th>
                       <th className="text-right px-4 py-2.5 font-semibold text-xs text-muted-foreground uppercase tracking-wider">
                         Variance
@@ -579,7 +743,7 @@ export default function Dashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {budgetData.map((row, i) => {
+                    {budgetData.data.map((row, i) => {
                       const under = row.variance >= 0;
                       return (
                         <tr
@@ -610,7 +774,9 @@ export default function Dashboard() {
           ) : (
             <div className="py-12 flex flex-col items-center justify-center text-muted-foreground">
               <Wallet className="h-10 w-10 mb-3 opacity-30" />
-              <p className="text-sm font-medium">No budgets set for {selectedMonthLabel}</p>
+              <p className="text-sm font-medium">
+                No budgets set for {viewMode === "weekly" ? week.label.split("–")[0].trim() + "'s month" : selectedMonthLabel}
+              </p>
               <p className="text-xs mt-1 opacity-70">
                 Go to the Budget page to add budget targets.
               </p>
@@ -641,7 +807,7 @@ function ProjectsSummaryCard() {
   const { data: projects = [] } = useQuery<DashProject[]>({
     queryKey: ["projects/summary"],
     queryFn: async () => {
-      const res = await fetch("/api/projects/summary", { credentials: "include" });
+      const res = await fetch(`${BASE}/api/projects/summary`, { credentials: "include" });
       if (!res.ok) return [];
       return res.json();
     },

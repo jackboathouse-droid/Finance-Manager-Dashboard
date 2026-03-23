@@ -35,6 +35,18 @@ function personClause(person?: string) {
   return sql`LOWER(TRIM(${transactionsTable.person})) = LOWER(TRIM(${trimmed}))`;
 }
 
+/**
+ * Build a date range clause.
+ * When start_date/end_date are provided they take priority over month.
+ * start_date and end_date must be ISO date strings (YYYY-MM-DD).
+ */
+function dateRangeClause(month: string, startDate?: string, endDate?: string) {
+  if (startDate && endDate) {
+    return sql`${transactionsTable.date} >= ${startDate}::date AND ${transactionsTable.date} <= ${endDate}::date`;
+  }
+  return sql`to_char(${transactionsTable.date}, 'YYYY-MM') = ${month}`;
+}
+
 // ── Summary ───────────────────────────────────────────────────────────────────
 
 router.get("/dashboard/summary", async (req, res) => {
@@ -43,8 +55,11 @@ router.get("/dashboard/summary", async (req, res) => {
     if (!userId) return res.status(401).json({ error: "Authentication required." });
 
     const month = (req.query.month as string) || currentMonth();
+    const startDate = req.query.start_date as string | undefined;
+    const endDate = req.query.end_date as string | undefined;
     const person = req.query.person as string | undefined;
     const pc = personClause(person);
+    const dateClause = dateRangeClause(month, startDate, endDate);
 
     const results = await db
       .select({
@@ -55,7 +70,7 @@ router.get("/dashboard/summary", async (req, res) => {
       .where(
         and(
           eq(transactionsTable.user_id, userId),
-          sql`to_char(${transactionsTable.date}, 'YYYY-MM') = ${month}`,
+          dateClause,
           pc
         )
       )
@@ -132,8 +147,11 @@ router.get("/dashboard/category-chart", async (req, res) => {
     if (!userId) return res.status(401).json({ error: "Authentication required." });
 
     const month = (req.query.month as string) || currentMonth();
+    const startDate = req.query.start_date as string | undefined;
+    const endDate = req.query.end_date as string | undefined;
     const person = req.query.person as string | undefined;
     const pc = personClause(person);
+    const dateClause = dateRangeClause(month, startDate, endDate);
 
     const results = await db
       .select({
@@ -145,7 +163,7 @@ router.get("/dashboard/category-chart", async (req, res) => {
       .where(
         and(
           eq(transactionsTable.user_id, userId),
-          sql`to_char(${transactionsTable.date}, 'YYYY-MM') = ${month}`,
+          dateClause,
           eq(transactionsTable.type, "expense"),
           pc
         )
@@ -176,8 +194,11 @@ router.get("/dashboard/subcategory-chart", async (req, res) => {
     if (!userId) return res.status(401).json({ error: "Authentication required." });
 
     const month = (req.query.month as string) || currentMonth();
+    const startDate = req.query.start_date as string | undefined;
+    const endDate = req.query.end_date as string | undefined;
     const person = req.query.person as string | undefined;
     const pc = personClause(person);
+    const dateClause = dateRangeClause(month, startDate, endDate);
 
     const results = await db
       .select({
@@ -191,7 +212,7 @@ router.get("/dashboard/subcategory-chart", async (req, res) => {
       .where(
         and(
           eq(transactionsTable.user_id, userId),
-          sql`to_char(${transactionsTable.date}, 'YYYY-MM') = ${month}`,
+          dateClause,
           eq(transactionsTable.type, "expense"),
           sql`${transactionsTable.subcategory_id} IS NOT NULL`,
           pc
@@ -217,6 +238,10 @@ router.get("/dashboard/subcategory-chart", async (req, res) => {
 });
 
 // ── Budget vs actual ──────────────────────────────────────────────────────────
+// FIX: Sum ALL budget entries per category (both category-level and subcategory-level),
+// so that users who budget at the subcategory level are correctly represented.
+// When start_date/end_date are provided (weekly mode), the budget is still the full monthly
+// budget for the month that contains start_date; only actuals are filtered by the date range.
 
 router.get("/dashboard/budget-vs-actual", async (req, res) => {
   try {
@@ -224,25 +249,39 @@ router.get("/dashboard/budget-vs-actual", async (req, res) => {
     if (!userId) return res.status(401).json({ error: "Authentication required." });
 
     const month = (req.query.month as string) || currentMonth();
+    const startDate = req.query.start_date as string | undefined;
+    const endDate = req.query.end_date as string | undefined;
     const person = req.query.person as string | undefined;
     const pc = personClause(person);
 
-    const budgets = await db
-      .select({
-        category_id: budgetsTable.category_id,
-        category_name: categoriesTable.name,
-        budget_amount: budgetsTable.budget_amount,
-      })
-      .from(budgetsTable)
-      .leftJoin(categoriesTable, eq(budgetsTable.category_id, categoriesTable.id))
-      .where(
-        and(
-          eq(budgetsTable.user_id, userId),
-          eq(budgetsTable.month, month),
-          sql`${budgetsTable.subcategory_id} IS NULL`
-        )
-      );
+    // For weekly mode: derive the budget month from start_date
+    const budgetMonth = startDate
+      ? startDate.slice(0, 7) // "YYYY-MM" from "YYYY-MM-DD"
+      : month;
 
+    // Actual spending date clause (weekly uses date range; monthly uses month string)
+    const dateClause = dateRangeClause(month, startDate, endDate);
+
+    // Fetch all budget entries for this user+month, grouped by category
+    // This correctly sums both category-level AND subcategory-level budget entries
+    const budgets = await db.execute(sql`
+      SELECT
+        c.id   AS category_id,
+        c.name AS category_name,
+        SUM(b.budget_amount) AS budget_amount
+      FROM budgets b
+      JOIN categories c ON b.category_id = c.id
+      WHERE b.user_id = ${userId}
+        AND b.month = ${budgetMonth}
+      GROUP BY c.id, c.name
+      ORDER BY c.name
+    `);
+
+    if (budgets.rows.length === 0) {
+      return res.json([]);
+    }
+
+    // Fetch actual expenses, grouped by category, for the selected period
     const actuals = await db
       .select({
         category_id: transactionsTable.category_id,
@@ -252,7 +291,7 @@ router.get("/dashboard/budget-vs-actual", async (req, res) => {
       .where(
         and(
           eq(transactionsTable.user_id, userId),
-          sql`to_char(${transactionsTable.date}, 'YYYY-MM') = ${month}`,
+          dateClause,
           eq(transactionsTable.type, "expense"),
           pc
         )
@@ -264,12 +303,18 @@ router.get("/dashboard/budget-vs-actual", async (req, res) => {
       if (row.category_id) actualMap[row.category_id] = parseFloat(row.actual ?? "0");
     }
 
-    const chartData = budgets
+    const chartData = budgets.rows
       .filter((b) => b.category_name)
       .map((b) => {
-        const budget = parseFloat(b.budget_amount ?? "0");
-        const actual = actualMap[b.category_id] ?? 0;
-        return { category: b.category_name as string, budget, actual, variance: budget - actual };
+        const budget = parseFloat(String(b.budget_amount ?? "0"));
+        const actual = actualMap[b.category_id as number] ?? 0;
+        return {
+          category: b.category_name as string,
+          budget,
+          actual,
+          variance: budget - actual,
+          is_weekly: !!(startDate && endDate),
+        };
       });
 
     res.json(chartData);

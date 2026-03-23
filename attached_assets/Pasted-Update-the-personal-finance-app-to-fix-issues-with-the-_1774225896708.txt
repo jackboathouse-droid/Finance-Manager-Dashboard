@@ -1,0 +1,87 @@
+Update the personal finance app to fix issues with the People field and improve the Dashboard functionality.
+
+1. People Field (Transactions) – Fix & Improve
+
+Problem:
+
+Typing into the “Person” field automatically creates and saves new entries unintentionally.
+
+Requirements:
+
+Convert the “Person” field into a controlled dropdown or searchable dropdown instead of free text input.
+Users should only be able to:
+Select an existing person from a list
+OR explicitly click “Add New Person” to create one
+
+Functionality:
+
+Add a “Manage People” option where users can:
+Add new people
+Delete existing people
+Prevent accidental creation of new entries when typing
+Ensure selected person is correctly linked to the transaction
+
+Goal:
+Eliminate accidental entries and give users full control over managing people.
+
+2. Dashboard Budget Section – Fix Data Mismatch
+
+Problem:
+
+Budget values on the dashboard are not matching the budgets created by the user.
+
+Requirements:
+
+Ensure the dashboard budget section dynamically pulls data from the Budget data type
+Match budgets based on:
+Current user
+Selected time period (month or week)
+Category / subcategory
+
+Logic Fix:
+
+Budget vs Actual should calculate:
+Total Budget (from budgets table)
+Total Spend (from transactions table)
+Ensure both use the same date range and filters
+
+Validation:
+
+Cross-check that:
+Budget totals = sum of created budgets
+Spend totals = filtered transactions
+
+Goal:
+Dashboard budget section must accurately reflect real user data.
+
+3. Dashboard – Add Weekly View
+
+Requirements:
+
+Add a toggle or selector:
+“Weekly” / “Monthly” view
+
+Weekly View Logic:
+
+Filter transactions and budgets by current week (Mon–Sun or user-defined)
+Display:
+Weekly spending
+Weekly budget vs actual
+Weekly trends (optional charts)
+
+Monthly View:
+
+Keep existing functionality but ensure it aligns with corrected budget logic
+
+UI/UX:
+
+Smooth toggle between weekly and monthly
+Clearly show selected date range
+4. General Requirements
+Ensure all changes are responsive and consistent across the app
+Avoid breaking existing workflows (transactions, budgets, reports)
+Maintain clean and intuitive UI
+Goal
+Prevent accidental “Person” entries by using a controlled dropdown system
+Fix dashboard budget inaccuracies by aligning with actual budget data
+Introduce a weekly dashboard view for better short-term financial tracking
