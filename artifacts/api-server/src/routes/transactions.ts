@@ -38,7 +38,7 @@ router.get("/transactions", async (req, res) => {
     const userId = req.session?.userId;
     if (!userId) return res.status(401).json({ error: "Authentication required." });
 
-    const { month, category_id, account_id, type } = req.query as Record<string, string>;
+    const { month, category_id, account_id, type, limit: limitParam } = req.query as Record<string, string>;
 
     const conditions: any[] = [eq(transactionsTable.user_id, userId)];
 
@@ -47,7 +47,9 @@ router.get("/transactions", async (req, res) => {
     if (account_id) conditions.push(eq(transactionsTable.account_id, parseInt(account_id)));
     if (type) conditions.push(eq(transactionsTable.type, type));
 
-    const results = await db
+    const limitNum = limitParam ? parseInt(limitParam) : undefined;
+
+    const baseQ = db
       .select(TX_SELECT)
       .from(transactionsTable)
       .leftJoin(accountsTable, eq(transactionsTable.account_id, accountsTable.id))
@@ -55,6 +57,8 @@ router.get("/transactions", async (req, res) => {
       .leftJoin(subcategoriesTable, eq(transactionsTable.subcategory_id, subcategoriesTable.id))
       .where(and(...conditions))
       .orderBy(sql`${transactionsTable.date} DESC`);
+
+    const results = limitNum && limitNum > 0 ? await baseQ.limit(limitNum) : await baseQ;
 
     res.json(results.map((r) => ({ ...r, amount: parseFloat(r.amount) })));
   } catch (err) {

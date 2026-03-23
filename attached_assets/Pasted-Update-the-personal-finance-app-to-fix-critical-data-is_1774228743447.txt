@@ -1,0 +1,80 @@
+Update the personal finance app to fix critical data issues, improve UI/UX, and implement a clean, structured dashboard layout.
+
+1. Fix Data Consistency (CRITICAL)
+Ensure dashboard budget values match the Budget database exactly
+Budget vs Actual must use:
+Same date range (weekly/monthly)
+Same categories/subcategories
+Recalculate:
+Total Budget = sum of budgets
+Total Spend = sum of filtered transactions
+Validate:
+No mismatches between dashboard and reports
+2. Fix Input & Data Integrity Issues
+Person Field:
+Replace free text input with dropdown or searchable dropdown
+Users must:
+Select existing person
+OR click “Add New Person” explicitly
+Add “Manage People” (add/remove)
+Prevent automatic creation from typing
+3. Fix All Scroll & Dropdown Issues
+Ensure all dropdowns, popups, and selection lists:
+Have max-height (300–400px)
+Use overflow-y: auto
+Fix:
+Subcategory selection scroll
+Parent category dropdown scroll
+Ensure scrolling works on:
+Desktop
+Mobile
+4. Implement Dashboard Layout
+
+Structure the dashboard into sections:
+
+Section 1: Financial Snapshot
+Net Worth
+Monthly Spending
+Budget Remaining
+Section 2: Budget vs Actual
+Add toggle: Weekly / Monthly
+Show:
+Budget
+Spend
+Remaining
+Section 3: Projects
+Show:
+Progress bar
+Current vs Target
+Status (on track / behind)
+Section 4: Insights
+Basic insights:
+Top spending category
+Weekly/monthly comparison
+Section 5: Recent Transactions
+Section 6: Quick Actions
+Add Transaction
+Add Project
+Add Budget
+5. Add Weekly / Monthly Toggle
+Apply toggle globally across dashboard
+Update:
+Budget calculations
+Transactions
+Charts
+6. Improve UI / UX Polish
+Use consistent spacing and padding
+Use card-based layout
+Improve hierarchy:
+Larger fonts for key numbers
+Add color states:
+Green (good)
+Yellow (warning)
+Red (over budget)
+7. Add Basic Error Handling
+Validate all inputs
+Prevent empty or invalid submissions
+Show clear error messages
+Goal
+
+Transform the dashboard into a clean, reliable, and intuitive financial control centre with accurate data, smooth interactions, and strong visual hierarchy—ready for SaaS-level user experience.

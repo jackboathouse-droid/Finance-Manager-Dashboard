@@ -5,6 +5,7 @@ import {
   categoriesTable,
   subcategoriesTable,
   budgetsTable,
+  accountsTable,
 } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 
@@ -321,6 +322,38 @@ router.get("/dashboard/budget-vs-actual", async (req, res) => {
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Failed to fetch budget vs actual" });
+  }
+});
+
+// ── Net worth ─────────────────────────────────────────────────────────────────
+
+router.get("/dashboard/net-worth", async (req, res) => {
+  try {
+    const userId = req.session?.userId;
+    if (!userId) return res.status(401).json({ error: "Authentication required." });
+
+    const result = await db.execute(sql`
+      SELECT
+        COALESCE(SUM(a.starting_balance::numeric + COALESCE(tx.tx_total, 0)), 0) AS net_worth,
+        COUNT(a.id) AS account_count
+      FROM accounts a
+      LEFT JOIN (
+        SELECT account_id, SUM(amount) AS tx_total
+        FROM transactions
+        WHERE user_id = ${userId}
+        GROUP BY account_id
+      ) tx ON a.id = tx.account_id
+      WHERE a.user_id = ${userId}
+    `);
+
+    const row = result.rows[0] ?? { net_worth: "0", account_count: "0" };
+    res.json({
+      net_worth: parseFloat(String(row.net_worth ?? "0")),
+      account_count: parseInt(String(row.account_count ?? "0")),
+    });
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Failed to fetch net worth" });
   }
 });
 
