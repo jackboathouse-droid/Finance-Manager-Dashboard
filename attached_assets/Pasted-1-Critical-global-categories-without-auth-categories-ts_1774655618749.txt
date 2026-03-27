@@ -1,0 +1,99 @@
+1. Critical: global categories without auth
+
+[categories.ts](c:\Users\jackb\OneDrive\Documents\AI Learning\Bubble\Finance-Manager-Dashboard-master\artifacts\api-server\src\routes\categories.ts) and [subcategories.ts](c:\Users\jackb\OneDrive\Documents\AI Learning\Bubble\Finance-Manager-Dashboard-master\artifacts\api-server\src\routes\subcategories.ts) expose list/create/update/delete with no requireAuth and no user_id on [categoriesTable](c:\Users\jackb\OneDrive\Documents\AI Learning\Bubble\Finance-Manager-Dashboard-master\lib\db\src\schema\categories.ts) / [subcategoriesTable](c:\Users\jackb\OneDrive\Documents\AI Learning\Bubble\Finance-Manager-Dashboard-master\lib\db\src\schema\subcategories.ts).
+
+For any multi-user or public deployment, one user can rename or delete categories for everyone. Plan: choose one pattern:
+
+
+
+
+
+A (recommended for SaaS): Add user_id (nullable: null = system defaults) to categories/subcategories; migrations; seed defaults as user_id = null; GET returns system + current user; mutations require auth and only allow rows for that user (or admin for system).
+
+
+
+B (minimal): Keep shared taxonomy but require admin role for POST/PUT/DELETE; all authenticated users read-only on mutations—still limiting for “editable categories per user.”
+
+2. Auth / product limits
+
+
+
+
+
+**MAX_USERS = 5** in [auth.ts](c:\Users\jackb\OneDrive\Documents\AI Learning\Bubble\Finance-Manager-Dashboard-master\artifacts\api-server\src\routes\auth.ts) blocks real growth—gate behind env (e.g. disable in production or set high limit).
+
+
+
+Email verification is not in the same file’s register flow (immediate session on signup)—add if you want Mint-grade onboarding.
+
+
+
+Nullable user_id on [transactionsTable](c:\Users\jackb\OneDrive\Documents\AI Learning\Bubble\Finance-Manager-Dashboard-master\lib\db\src\schema\transactions.ts) / [accountsTable](c:\Users\jackb\OneDrive\Documents\AI Learning\Bubble\Finance-Manager-Dashboard-master\lib\db\src\schema\accounts.ts): ensure API always sets user_id on create and consider a DB NOT NULL after backfill for integrity.
+
+3. “Bubble” differentiator: AI
+
+No OpenAI (or other) integration appears in the repo. Plan:
+
+
+
+
+
+Add **POST /api/ai/insights or /api/chat** in api-server: accepts server-built JSON summaries only (reuse aggregations from [dashboard.ts](c:\Users\jackb\OneDrive\Documents\AI Learning\Bubble\Finance-Manager-Dashboard-master\artifacts\api-server\src\routes\dashboard.ts) / [reports.ts](c:\Users\jackb\OneDrive\Documents\AI Learning\Bubble\Finance-Manager-Dashboard-master\artifacts\api-server\src\routes\reports.ts)); call OpenAI with strict system prompt; require auth; rate limit; store OPENAI_API_KEY in secrets.
+
+
+
+Extend OpenAPI + Orval; add a small Assistant drawer/page in [finance-app](c:\Users\jackb\OneDrive\Documents\AI Learning\Bubble\Finance-Manager-Dashboard-master\artifacts\finance-app) (you already have cmdk for a future command bar).
+
+Optional first step without LLM: rule-based insight strings on the dashboard using existing month-over-month queries.
+
+4. Assets like “car” and loans beyond credit cards
+
+Net worth today is accounts + transactions (bank vs credit_card in reports). Manual assets (car, home equity) are not first-class unless modeled as accounts or new tables. If you want that: add manual_assets / manual_liabilities (or unify into accounts with types) + migration + reports that merge into balance sheet.
+
+5. Dev environment
+
+
+
+
+
+Workspace enforces pnpm ([root package.json preinstall](c:\Users\jackb\OneDrive\Documents\AI Learning\Bubble\Finance-Manager-Dashboard-master\package.json)); [finance-app vite.config.ts](c:\Users\jackb\OneDrive\Documents\AI Learning\Bubble\Finance-Manager-Dashboard-master\artifacts\finance-app\vite.config.ts) requires PORT and BASE_PATH—document or add .env.example for local/Replit parity.
+
+
+
+Windows: sh in root preinstall may require Git Bash/WSL; if installs fail, align scripts with your local shell or run from Replit.
+
+Suggested phase order (aligned to this repo)
+
+
+
+
+
+Security + data integrity: Fix category/subcategory model + routes; review nullable user_id; adjust MAX_USERS via env.
+
+
+
+Reliability of auth UX: Confirm cookie sameSite/secure for your production domain (already tuned for Replit proxy); SMTP for real password reset in prod.
+
+
+
+Product polish: Dashboard copy (consumer-friendly labels next to “profit-loss”), insights (rules then AI), optional command palette.
+
+
+
+Scale: Plaid (new integration package + sync jobs), Stripe (subscription flag on users or new table), email digests.
+
+Success criteria
+
+
+
+
+
+Two test users: B cannot alter A’s data; B cannot mutate global categories (under chosen design).
+
+
+
+AI endpoint returns only from your aggregates when logged in; key never exposed to browser.
+
+
+
+pnpm build / typecheck clean after OpenAPI changes (regenerate Orval).
