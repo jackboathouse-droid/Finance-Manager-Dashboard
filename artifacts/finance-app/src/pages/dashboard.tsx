@@ -491,7 +491,7 @@ export default function Dashboard() {
             value={netWorthData ? formatCurrency(netWorthData.net_worth) : "—"}
             subLabel={
               netWorthData
-                ? `${netWorthData.account_count} account${netWorthData.account_count !== 1 ? "s" : ""}${netWorthData.manual_item_count > 0 ? ` + ${netWorthData.manual_item_count} manual item${netWorthData.manual_item_count !== 1 ? "s" : ""}` : ""}`
+                ? `${netWorthData.account_count} account${netWorthData.account_count !== 1 ? "s" : ""} + ${netWorthData.manual_item_count} manual item${netWorthData.manual_item_count !== 1 ? "s" : ""}`
                 : undefined
             }
             icon={Landmark}
