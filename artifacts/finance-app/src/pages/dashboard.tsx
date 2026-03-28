@@ -901,19 +901,32 @@ function AiInsightsCard({ params, person }: { params: PeriodParams; person?: str
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold">AI Financial Insights</p>
             <p className="text-xs text-muted-foreground">
-              {isLoading ? "Generating insights…" : data ? `${data.insights.length} insights for ${data.period}` : isError ? "Could not load insights" : "Personalised analysis of your finances"}
+              {isFetching ? "Generating insights…" : data ? `${data.insights.length} insights for ${data.period}` : isError ? "Could not load insights" : "Personalised analysis of your finances"}
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {/* Stale indicator: shown when current filter differs from what was fetched */}
+            {!isFetching && data && (
+              (() => {
+                const periodMismatch = fetchedParams.mode !== params.mode ||
+                  (fetchedParams.mode === "monthly" ? fetchedParams.month !== params.month : fetchedParams.startStr !== params.startStr);
+                const personMismatch = (fetchedPerson ?? "") !== (person ?? "");
+                return (periodMismatch || personMismatch) ? (
+                  <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded">
+                    Refresh for current view
+                  </span>
+                ) : null;
+              })()
+            )}
             {isOpen && (data || isError) && (
               <Button
                 variant="ghost"
                 size="sm"
                 className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
                 onClick={(e) => { e.stopPropagation(); handleRefresh(); }}
-                disabled={isLoading}
+                disabled={isFetching}
               >
-                <RefreshCw className={cn("h-3.5 w-3.5 mr-1", isLoading && "animate-spin")} />
+                <RefreshCw className={cn("h-3.5 w-3.5 mr-1", isFetching && "animate-spin")} />
                 Refresh
               </Button>
             )}

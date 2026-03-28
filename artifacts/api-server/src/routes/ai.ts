@@ -230,31 +230,38 @@ STRICT RULES:
 
     const rawContent = completion.choices[0]?.message?.content?.trim() ?? "[]";
 
-    // Parse JSON array — with fallbacks for imperfect model output
+    // Parse JSON array — with fallbacks for imperfect model output.
+    // Contract: final insights array must have between 3 and 5 items.
     let insights: string[] = [];
     try {
       const parsed = JSON.parse(rawContent);
       if (Array.isArray(parsed) && parsed.every((s) => typeof s === "string")) {
-        insights = parsed.slice(0, 5);
+        insights = parsed;
       }
     } catch {
       // Try to extract quoted strings from the raw output
       const matches = rawContent.match(/"([^"]{10,})"/g);
       if (matches) {
-        insights = matches.map((m) => m.slice(1, -1)).slice(0, 5);
+        insights = matches.map((m) => m.slice(1, -1));
       }
       // Last resort: split on newlines
       if (insights.length === 0) {
         insights = rawContent
           .split("\n")
           .map((l) => l.replace(/^[-•*\d.]\s*/, "").trim())
-          .filter((l) => l.length > 10)
-          .slice(0, 5);
+          .filter((l) => l.length > 10);
       }
     }
 
-    if (insights.length === 0) {
-      insights = ["No insights could be generated for this period. Try adding more transactions."];
+    // Enforce 3–5 item contract: trim above 5, pad below 3 with generic prompts
+    insights = insights.slice(0, 5);
+    const padding = [
+      "Add more transactions to get richer insights for this period.",
+      "Track your spending categories to unlock personalised recommendations.",
+      "Set up budgets to see how your actuals compare each month.",
+    ];
+    while (insights.length < 3) {
+      insights.push(padding[insights.length] ?? "Keep tracking your finances for better insights.");
     }
 
     res.json({ insights, period: periodLabel });
