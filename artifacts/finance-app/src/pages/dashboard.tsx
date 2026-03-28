@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useGetMonthlyChart, useGetTransactionPeople } from "@workspace/api-client-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -54,6 +54,9 @@ import {
   AlertTriangle,
   CheckCircle2,
   AlertCircle,
+  Sparkles,
+  RefreshCw,
+  ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -538,6 +541,9 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* ── AI Insights ─────────────────────────────────────────────────── */}
+      <AiInsightsCard params={periodParams} />
+
       {/* ── Section 2: Budget vs Actual ────────────────────────────────── */}
       <div>
         <SectionLabel label="Budget vs Actual" />
@@ -807,6 +813,170 @@ export default function Dashboard() {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── AI Insights card ───────────────────────────────────────────────────────────
+
+interface InsightsResponse {
+  insights: string[];
+  period: string;
+}
+
+function AiInsightsCard({ params }: { params: PeriodParams }) {
+  const [isOpen, setIsOpen] = useState(true);
+
+  // fetchedParams is the LOCKED period used for the current query.
+  // It starts equal to the initial params (auto-fetch on mount).
+  // It only changes when the user explicitly clicks Refresh.
+  // Period selector changes do NOT update fetchedParams (no auto-refresh).
+  const [fetchedParams, setFetchedParams] = useState<PeriodParams>(params);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const buildBody = useCallback((p: PeriodParams): Record<string, string> => {
+    if (p.mode === "monthly") return { month: p.month };
+    return { start_date: p.startStr, end_date: p.endStr, month: p.startStr.slice(0, 7) };
+  }, []);
+
+  const { data, isLoading, isError, error } = useQuery<InsightsResponse>({
+    // fetchedParams (not live params) in the key → period changes don't auto-refetch
+    queryKey: ["ai/insights", fetchedParams, refreshKey],
+    queryFn: async () => {
+      const body = buildBody(fetchedParams);
+      const res = await fetch(`${BASE}/api/ai/insights`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.status === 429) {
+        const json = await res.json();
+        throw new Error(json.error ?? "Rate limit reached. Try again later.");
+      }
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.error ?? "Failed to generate insights.");
+      }
+      return res.json();
+    },
+    enabled: isOpen,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+
+  const handleOpen = useCallback(() => {
+    setIsOpen((v) => !v);
+  }, []);
+
+  const handleRefresh = useCallback(() => {
+    // Lock the current live params and bump key to force re-fetch
+    setFetchedParams(params);
+    setRefreshKey((k) => k + 1);
+  }, [params]);
+
+  const errMsg = isError
+    ? (error instanceof Error ? error.message : "Something went wrong. Please try again.")
+    : null;
+
+  return (
+    <div>
+      <SectionLabel label="AI Insights" />
+      <Card className="border-border/50 shadow-sm overflow-hidden">
+        {/* Header — always visible */}
+        <div
+          className="flex items-center gap-3 px-5 py-4 cursor-pointer select-none hover:bg-muted/30 transition-colors"
+          onClick={handleOpen}
+          role="button"
+          aria-expanded={isOpen}
+        >
+          <div className="h-8 w-8 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
+            <Sparkles className="h-4 w-4 text-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold">AI Financial Insights</p>
+            <p className="text-xs text-muted-foreground">
+              {isLoading ? "Generating insights…" : data ? `${data.insights.length} insights for ${data.period}` : isError ? "Could not load insights" : "Personalised analysis of your finances"}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {isOpen && (data || isError) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                onClick={(e) => { e.stopPropagation(); handleRefresh(); }}
+                disabled={isLoading}
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5 mr-1", isLoading && "animate-spin")} />
+                Refresh
+              </Button>
+            )}
+            <ChevronDown
+              className={cn("h-4 w-4 text-muted-foreground transition-transform duration-200", isOpen && "rotate-180")}
+            />
+          </div>
+        </div>
+
+        {/* Collapsible body */}
+        {isOpen && (
+          <CardContent className="pt-0 pb-5 px-5 border-t border-border/40">
+            {/* Loading skeleton */}
+            {isLoading && (
+              <div className="pt-4 space-y-3 animate-pulse">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="flex items-start gap-3">
+                    <div className="h-5 w-5 rounded-full bg-muted flex-shrink-0 mt-0.5" />
+                    <div className="flex-1 space-y-1.5">
+                      <div className="h-3 bg-muted rounded w-full" />
+                      <div className="h-3 bg-muted rounded w-4/5" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Error state */}
+            {isError && !isLoading && (
+              <div className="pt-4 flex flex-col items-center gap-3 text-center">
+                <div className="h-9 w-9 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                  <AlertTriangle className="h-4.5 w-4.5 text-amber-600 dark:text-amber-400" />
+                </div>
+                <p className="text-sm text-muted-foreground max-w-sm">{errMsg}</p>
+                {!errMsg?.toLowerCase().includes("rate limit") && (
+                  <Button variant="outline" size="sm" onClick={handleRefresh} className="text-xs">
+                    Try again
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {/* Insights list */}
+            {data && !isLoading && !isError && (
+              <ul className="pt-4 space-y-3">
+                {data.insights.map((insight, i) => (
+                  <li key={i} className="flex items-start gap-3">
+                    <div
+                      className="h-5 w-5 rounded-full flex-shrink-0 mt-0.5 flex items-center justify-center text-[10px] font-bold text-white"
+                      style={{ backgroundColor: ["#4FC3F7", "#10B981", "#F59E0B", "#8B5CF6", "#EF4444"][i % 5] }}
+                    >
+                      {i + 1}
+                    </div>
+                    <p className="text-sm leading-relaxed">{insight}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {/* Powered by note */}
+            {(data || isLoading) && (
+              <p className="mt-4 text-[11px] text-muted-foreground/50 text-right">
+                Powered by AI · Based on your actual transaction data only
+              </p>
+            )}
+          </CardContent>
+        )}
+      </Card>
     </div>
   );
 }

@@ -11,6 +11,7 @@ import reportsRouter from "./reports";
 import projectsRouter from "./projects";
 import settingsRouter from "./settings";
 import peopleRouter from "./people";
+import aiRouter from "./ai";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use(reportsRouter);
 router.use(projectsRouter);
 router.use(settingsRouter);
 router.use(peopleRouter);
+router.use(aiRouter);
 
 export default router;
