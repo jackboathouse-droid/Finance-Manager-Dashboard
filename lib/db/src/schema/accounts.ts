@@ -8,7 +8,7 @@ export const accountsTable = pgTable("accounts", {
   name: text("name").notNull(),
   type: varchar("type", { length: 20 }).notNull(), // bank, credit_card
   person: text("person").notNull(),
-  user_id: integer("user_id").references(() => usersTable.id),
+  user_id: integer("user_id").notNull().references(() => usersTable.id),
   starting_balance: numeric("starting_balance", { precision: 12, scale: 2 }).notNull().default("0"),
 });
 

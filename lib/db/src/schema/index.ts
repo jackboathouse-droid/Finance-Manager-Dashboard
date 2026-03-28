@@ -5,3 +5,6 @@ export * from "./transactions";
 export * from "./budgets";
 export * from "./users";
 export * from "./projects";
+export * from "./people";
+export * from "./user-settings";
+export * from "./user-sessions";

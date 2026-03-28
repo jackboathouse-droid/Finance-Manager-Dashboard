@@ -74,8 +74,9 @@ artifacts-monorepo/
 Session-based auth using `express-session`. 
 - Demo credentials: `admin@bubble.app` / `admin` (also accepts "admin" as shorthand username)
 - Admin user seeded on startup via `ensureAdminUser()` in seed.ts
-- Registration limited to 5 users (testing phase cap)
+- Registration cap controlled by `MAX_USERS` env var (default: `5`). Set to `0` to disable the cap entirely, or any positive integer to set a specific limit.
 - All data routes (accounts, transactions, budgets, dashboard) filter by `req.session.userId` — full user isolation
+- Categories/subcategories are shared (global taxonomy) but **all endpoints require authentication** (session check). Unauthenticated requests receive 401.
 - Session stores: username, email, fullName, userId, role, profilePicture
 - Google OAuth supported via passport-google-oauth20
 

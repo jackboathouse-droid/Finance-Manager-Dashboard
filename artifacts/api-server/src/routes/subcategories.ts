@@ -7,7 +7,9 @@ const router: IRouter = Router();
 
 router.get("/subcategories", async (req, res) => {
   try {
-    let query = db.select().from(subcategoriesTable);
+    const userId = req.session?.userId;
+    if (!userId) return res.status(401).json({ error: "Authentication required." });
+
     const categoryId = req.query.category_id ? parseInt(req.query.category_id as string) : null;
     if (categoryId) {
       const results = await db
@@ -17,7 +19,7 @@ router.get("/subcategories", async (req, res) => {
         .orderBy(subcategoriesTable.name);
       return res.json(results);
     }
-    const results = await query.orderBy(subcategoriesTable.name);
+    const results = await db.select().from(subcategoriesTable).orderBy(subcategoriesTable.name);
     res.json(results);
   } catch (err) {
     req.log.error(err);
@@ -27,6 +29,9 @@ router.get("/subcategories", async (req, res) => {
 
 router.post("/subcategories", async (req, res) => {
   try {
+    const userId = req.session?.userId;
+    if (!userId) return res.status(401).json({ error: "Authentication required." });
+
     const { name, category_id, type } = req.body as {
       name: string;
       category_id: number;
@@ -45,6 +50,9 @@ router.post("/subcategories", async (req, res) => {
 
 router.put("/subcategories/:id", async (req, res) => {
   try {
+    const userId = req.session?.userId;
+    if (!userId) return res.status(401).json({ error: "Authentication required." });
+
     const id = parseInt(req.params.id);
     const { name, category_id, type } = req.body as {
       name: string;
@@ -66,6 +74,9 @@ router.put("/subcategories/:id", async (req, res) => {
 
 router.delete("/subcategories/:id", async (req, res) => {
   try {
+    const userId = req.session?.userId;
+    if (!userId) return res.status(401).json({ error: "Authentication required." });
+
     const id = parseInt(req.params.id);
     await db.delete(subcategoriesTable).where(eq(subcategoriesTable.id, id));
     res.json({ message: "Subcategory deleted" });

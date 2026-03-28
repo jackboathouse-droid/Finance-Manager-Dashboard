@@ -18,7 +18,7 @@ export const transactionsTable = pgTable("transactions", {
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
   person: text("person").notNull(),
   type: varchar("type", { length: 10 }).notNull(), // income, expense, transfer
-  user_id: integer("user_id").references(() => usersTable.id),
+  user_id: integer("user_id").notNull().references(() => usersTable.id),
 });
 
 export const insertTransactionSchema = createInsertSchema(transactionsTable).omit({ id: true });

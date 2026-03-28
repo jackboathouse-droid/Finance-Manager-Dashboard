@@ -12,8 +12,13 @@ import { googleOAuthEnabled, getFrontendBase } from "../lib/google-auth";
 const router: IRouter = Router();
 
 const SALT_ROUNDS = 12;
-const MAX_USERS = 5;
 const RESET_TOKEN_TTL_MINUTES = 60;
+
+/** Read from env; 0 means no cap. Defaults to 5 if unset. */
+function getMaxUsers(): number {
+  const val = parseInt(process.env.MAX_USERS ?? "5");
+  return isNaN(val) ? 5 : val;
+}
 
 declare module "express-session" {
   interface SessionData {
@@ -89,11 +94,14 @@ router.post("/auth/register", async (req, res) => {
       return res.status(400).json({ error: "Password must be at least 8 characters." });
     }
 
-    const [{ total }] = await db.select({ total: count() }).from(usersTable);
-    if (total >= MAX_USERS) {
-      return res.status(403).json({
-        error: "User limit reached for testing phase. No new registrations are being accepted.",
-      });
+    const maxUsers = getMaxUsers();
+    if (maxUsers > 0) {
+      const [{ total }] = await db.select({ total: count() }).from(usersTable);
+      if (total >= maxUsers) {
+        return res.status(403).json({
+          error: "User limit reached. No new registrations are being accepted at this time.",
+        });
+      }
     }
 
     const normalizedEmail = email.trim().toLowerCase();
