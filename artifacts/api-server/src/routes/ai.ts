@@ -7,9 +7,26 @@ import {
   accountsTable,
 } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
-import { openai } from "@workspace/integrations-openai-ai-server";
+import OpenAI from "openai";
 
 const router: IRouter = Router();
+
+// ── Lazy OpenAI client — only initialised on first insights request ────────────
+// Avoids crashing API startup if env vars are absent (graceful degradation).
+
+let _openai: OpenAI | null = null;
+
+function getOpenAI(): OpenAI {
+  if (!_openai) {
+    const baseURL = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+    const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+    if (!baseURL || !apiKey) {
+      throw new Error("OpenAI integration is not configured. Contact the administrator.");
+    }
+    _openai = new OpenAI({ apiKey, baseURL });
+  }
+  return _openai;
+}
 
 // ── In-memory rate limiter: max 10 calls per user per hour ────────────────────
 
@@ -17,7 +34,7 @@ const rateLimitMap = new Map<number, number[]>();
 
 function checkRateLimit(userId: number): { allowed: boolean; retryAfterSec?: number } {
   const now = Date.now();
-  const windowMs = 60 * 60 * 1000; // 1 hour
+  const windowMs = 60 * 60 * 1000;
   const maxCalls = 10;
 
   const calls = (rateLimitMap.get(userId) ?? []).filter((ts) => now - ts < windowMs);
@@ -32,7 +49,7 @@ function checkRateLimit(userId: number): { allowed: boolean; retryAfterSec?: num
   return { allowed: true };
 }
 
-// ── Helpers (mirror dashboard.ts) ────────────────────────────────────────────
+// ── Date range helpers ────────────────────────────────────────────────────────
 
 function currentMonth() {
   const now = new Date();
@@ -53,7 +70,7 @@ router.post("/ai/insights", async (req, res) => {
     const userId = req.session?.userId;
     if (!userId) return res.status(401).json({ error: "Authentication required." });
 
-    // Rate limit
+    // Rate limit check
     const rl = checkRateLimit(userId);
     if (!rl.allowed) {
       return res.status(429).json({
@@ -88,13 +105,13 @@ router.post("/ai/insights", async (req, res) => {
       if (row.type === "income") totalIncome = parseFloat(row.total ?? "0");
       else if (row.type === "expense") totalExpenses = Math.abs(parseFloat(row.total ?? "0"));
     }
-    const netCashFlow = totalIncome - totalExpenses;
 
-    // ── 2. Top spending categories ─────────────────────────────────────────
-    const categoryRows = await db
+    // ── 2. Full actuals by category (all expense categories, not limited) ──
+    // This query is unbounded so ALL budgeted categories get accurate actuals.
+    const actualsRows = await db
       .select({
-        category: categoriesTable.name,
-        amount: sql<string>`SUM(ABS(${transactionsTable.amount}))`,
+        category_name: categoriesTable.name,
+        actual: sql<string>`SUM(ABS(${transactionsTable.amount}))`,
       })
       .from(transactionsTable)
       .leftJoin(categoriesTable, eq(transactionsTable.category_id, categoriesTable.id))
@@ -106,17 +123,23 @@ router.post("/ai/insights", async (req, res) => {
         )
       )
       .groupBy(categoriesTable.name)
-      .orderBy(sql`SUM(ABS(${transactionsTable.amount})) DESC`)
-      .limit(8);
+      .orderBy(sql`SUM(ABS(${transactionsTable.amount})) DESC`);
 
-    const topCategories = categoryRows
-      .filter((r) => r.category)
+    const actualMap: Record<string, number> = {};
+    for (const row of actualsRows) {
+      if (row.category_name) actualMap[row.category_name] = parseFloat(row.actual ?? "0");
+    }
+
+    // Top spending categories (for summary section of prompt)
+    const topCategories = actualsRows
+      .filter((r) => r.category_name)
+      .slice(0, 6)
       .map((r) => ({
-        category: r.category as string,
-        amount: parseFloat(r.amount ?? "0"),
+        category: r.category_name as string,
+        amount: parseFloat(r.actual ?? "0"),
       }));
 
-    // ── 3. Budget vs actual ────────────────────────────────────────────────
+    // ── 3. Budget vs actual (all budgeted categories with correct actuals) ─
     const budgetRows = await db.execute(sql`
       SELECT c.name AS category_name, SUM(b.budget_amount) AS budget_amount
       FROM budgets b
@@ -126,16 +149,19 @@ router.post("/ai/insights", async (req, res) => {
       ORDER BY c.name
     `);
 
-    const actualMap: Record<string, number> = {};
-    for (const cat of topCategories) actualMap[cat.category] = cat.amount;
-
     const budgetComparison = budgetRows.rows
       .filter((b) => b.category_name)
       .map((b) => {
         const budget = parseFloat(String(b.budget_amount ?? "0"));
         const actual = actualMap[b.category_name as string] ?? 0;
         const pct = budget > 0 ? Math.round((actual / budget) * 100) : null;
-        return { category: b.category_name as string, budget, actual, pct_used: pct };
+        return {
+          category: b.category_name as string,
+          budget,
+          actual,
+          pct_used: pct,
+          status: budget <= 0 ? "no budget" : actual > budget ? "over" : actual / budget >= 0.9 ? "near limit" : actual / budget >= 0.7 ? "watch" : "on track",
+        };
       });
 
     // ── 4. Net worth ───────────────────────────────────────────────────────
@@ -151,45 +177,41 @@ router.post("/ai/insights", async (req, res) => {
     `);
     const netWorth = parseFloat(String(nwResult.rows[0]?.net_worth ?? "0"));
 
-    // ── 5. Transaction count ───────────────────────────────────────────────
-    const txCountResult = await db.execute(sql`
-      SELECT COUNT(*) AS tx_count FROM transactions
-      WHERE user_id = ${userId} AND ${dateClause}
-    `);
-    const txCount = parseInt(String(txCountResult.rows[0]?.tx_count ?? "0"));
-
-    // ── 6. Build prompt payload ────────────────────────────────────────────
+    // ── 5. Build prompt payload ────────────────────────────────────────────
     const payload = {
       period: periodLabel,
       net_worth: netWorth,
       income: totalIncome,
       expenses: totalExpenses,
-      net_cash_flow: netCashFlow,
-      transaction_count: txCount,
-      top_spending_categories: topCategories.slice(0, 6),
+      net_cash_flow: totalIncome - totalExpenses,
+      top_spending_categories: topCategories,
       budget_vs_actual: budgetComparison,
     };
 
-    const systemPrompt = `You are a concise, friendly personal finance advisor embedded in the "Bubble" personal finance app. 
-Your job is to analyse the user's financial data for a specific period and return EXACTLY 3 to 5 bullet-point insights.
+    const systemPrompt = `You are a concise, friendly personal finance advisor embedded in the "Bubble" app.
+Analyse the user's financial data and return EXACTLY 3 to 5 bullet-point insights.
 
 STRICT RULES:
-- Return ONLY a JSON array of strings, each string being one insight bullet (no markdown, no prose, no keys, no explanation outside the array).
-- Each bullet must be a single sentence, maximum 25 words.
-- Every number you mention MUST come directly from the data provided — do NOT invent, estimate, or round figures beyond what is given.
-- If a data field is 0 or empty (e.g. no budget set, no income), note that fact concisely rather than skipping it.
-- Be actionable: where relevant, suggest one concrete next step (e.g. "consider setting a budget for X", "you are on track for Y").
-- Do NOT use markdown bullet characters, just plain text strings in the JSON array.
-- Do NOT add a trailing period to insights that already end with a value or percentage.
-- Tone: clear, encouraging, data-driven. No fluff, no filler phrases like "Great job!" or "Keep it up!".
+- Return ONLY a JSON array of strings (e.g. ["Insight one.", "Insight two."]).
+- No markdown, no prose, no keys, no text outside the array.
+- Each bullet: one sentence, maximum 25 words.
+- Every number MUST come directly from the provided data — never invent or estimate figures.
+- If a field is 0 or missing, note that fact rather than skipping it.
+- Be actionable: where relevant, suggest one concrete next step.
+- No markdown bullet characters in the strings, just plain text.
+- Tone: clear, encouraging, data-driven. No filler phrases.`;
 
-Example output format (do not copy content, only the format):
-["Insight one here.", "Insight two here.", "Insight three here."]`;
+    const userMessage = `Financial data for ${periodLabel}:\n${JSON.stringify(payload, null, 2)}\n\nReturn 3–5 insight bullets as a JSON array of strings.`;
 
-    const userMessage = `Here is my financial data for the period ${periodLabel}:\n${JSON.stringify(payload, null, 2)}\n\nPlease return 3–5 actionable insight bullets as a JSON array of strings.`;
+    // ── 6. Call OpenAI ─────────────────────────────────────────────────────
+    let openaiClient: OpenAI;
+    try {
+      openaiClient = getOpenAI();
+    } catch {
+      return res.status(503).json({ error: "AI insights are not available right now. Please try again later." });
+    }
 
-    // ── 7. Call OpenAI ─────────────────────────────────────────────────────
-    const completion = await openai.chat.completions.create({
+    const completion = await openaiClient.chat.completions.create({
       model: "gpt-5.2",
       max_completion_tokens: 512,
       messages: [
@@ -200,26 +222,27 @@ Example output format (do not copy content, only the format):
 
     const rawContent = completion.choices[0]?.message?.content?.trim() ?? "[]";
 
-    // Parse and validate the JSON array of strings
+    // Parse JSON array — with fallbacks for imperfect model output
     let insights: string[] = [];
     try {
       const parsed = JSON.parse(rawContent);
       if (Array.isArray(parsed) && parsed.every((s) => typeof s === "string")) {
         insights = parsed.slice(0, 5);
-      } else {
-        // Fallback: extract quoted strings from the response
-        const matches = rawContent.match(/"([^"]+)"/g);
-        if (matches) {
-          insights = matches.map((m) => m.replace(/^"|"$/g, "")).slice(0, 5);
-        }
       }
     } catch {
-      // Last resort: split on newlines and clean up
-      insights = rawContent
-        .split("\n")
-        .map((l) => l.replace(/^[-•*\d.]\s*/, "").trim())
-        .filter((l) => l.length > 10)
-        .slice(0, 5);
+      // Try to extract quoted strings from the raw output
+      const matches = rawContent.match(/"([^"]{10,})"/g);
+      if (matches) {
+        insights = matches.map((m) => m.slice(1, -1)).slice(0, 5);
+      }
+      // Last resort: split on newlines
+      if (insights.length === 0) {
+        insights = rawContent
+          .split("\n")
+          .map((l) => l.replace(/^[-•*\d.]\s*/, "").trim())
+          .filter((l) => l.length > 10)
+          .slice(0, 5);
+      }
     }
 
     if (insights.length === 0) {
@@ -229,8 +252,7 @@ Example output format (do not copy content, only the format):
     res.json({ insights, period: periodLabel });
   } catch (err: unknown) {
     req.log.error(err);
-    const message = err instanceof Error ? err.message : "Unknown error";
-    res.status(500).json({ error: "Failed to generate insights. Please try again later.", detail: message });
+    res.status(500).json({ error: "Failed to generate insights. Please try again later." });
   }
 });
 
