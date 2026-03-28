@@ -8,3 +8,4 @@ export * from "./projects";
 export * from "./people";
 export * from "./user-settings";
 export * from "./user-sessions";
+export * from "./manual-assets";

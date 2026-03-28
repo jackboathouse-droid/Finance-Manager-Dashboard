@@ -326,6 +326,7 @@ router.get("/dashboard/budget-vs-actual", async (req, res) => {
 });
 
 // ── Net worth ─────────────────────────────────────────────────────────────────
+// Consolidated figure: account balances + manual assets - manual liabilities
 
 router.get("/dashboard/net-worth", async (req, res) => {
   try {
@@ -334,7 +335,7 @@ router.get("/dashboard/net-worth", async (req, res) => {
 
     const result = await db.execute(sql`
       SELECT
-        COALESCE(SUM(a.starting_balance::numeric + COALESCE(tx.tx_total, 0)), 0) AS net_worth,
+        COALESCE(SUM(a.starting_balance::numeric + COALESCE(tx.tx_total, 0)), 0) AS accounts_balance,
         COUNT(a.id) AS account_count
       FROM accounts a
       LEFT JOIN (
@@ -346,10 +347,29 @@ router.get("/dashboard/net-worth", async (req, res) => {
       WHERE a.user_id = ${userId}
     `);
 
-    const row = result.rows[0] ?? { net_worth: "0", account_count: "0" };
+    const manualResult = await db.execute(sql`
+      SELECT
+        COALESCE(SUM(CASE WHEN type = 'asset' THEN value::numeric ELSE 0 END), 0) AS total_assets,
+        COALESCE(SUM(CASE WHEN type = 'liability' THEN value::numeric ELSE 0 END), 0) AS total_liabilities,
+        COUNT(*) AS item_count
+      FROM manual_assets
+      WHERE user_id = ${userId}
+    `);
+
+    const row = result.rows[0] ?? { accounts_balance: "0", account_count: "0" };
+    const mRow = manualResult.rows[0] ?? { total_assets: "0", total_liabilities: "0", item_count: "0" };
+
+    const accountsBalance = parseFloat(String(row.accounts_balance ?? "0"));
+    const totalAssets = parseFloat(String(mRow.total_assets ?? "0"));
+    const totalLiabilities = parseFloat(String(mRow.total_liabilities ?? "0"));
+    const itemCount = parseInt(String(mRow.item_count ?? "0"));
+
     res.json({
-      net_worth: parseFloat(String(row.net_worth ?? "0")),
+      net_worth: accountsBalance + totalAssets - totalLiabilities,
       account_count: parseInt(String(row.account_count ?? "0")),
+      manual_assets: totalAssets,
+      manual_liabilities: totalLiabilities,
+      manual_item_count: itemCount,
     });
   } catch (err) {
     req.log.error(err);

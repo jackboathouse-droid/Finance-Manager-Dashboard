@@ -19,6 +19,7 @@ import Categories from "./pages/categories";
 import Reports from "./pages/reports";
 import Projects from "./pages/projects";
 import SettingsPage from "./pages/settings";
+import AssetsPage from "./pages/assets";
 import NotFound from "./pages/not-found";
 
 const queryClient = new QueryClient();
@@ -69,6 +70,7 @@ function Router() {
       <Route path="/reports" component={() => <ProtectedRoute component={Reports} />} />
       <Route path="/projects" component={() => <ProtectedRoute component={Projects} />} />
       <Route path="/settings" component={() => <ProtectedRoute component={SettingsPage} />} />
+      <Route path="/assets" component={() => <ProtectedRoute component={AssetsPage} />} />
 
       <Route component={NotFound} />
     </Switch>

@@ -364,8 +364,14 @@ export default function Dashboard() {
 
   const { summary, categoryData, budgetData } = useDashboardData(periodParams);
 
-  // Net worth
-  const { data: netWorthData } = useQuery<{ net_worth: number; account_count: number }>({
+  // Net worth (includes manual assets & liabilities)
+  const { data: netWorthData } = useQuery<{
+    net_worth: number;
+    account_count: number;
+    manual_assets: number;
+    manual_liabilities: number;
+    manual_item_count: number;
+  }>({
     queryKey: ["dashboard/net-worth"],
     queryFn: async () => {
       const res = await fetch(`${BASE}/api/dashboard/net-worth`, { credentials: "include" });
@@ -483,7 +489,11 @@ export default function Dashboard() {
           <KpiCard
             label="Net Worth"
             value={netWorthData ? formatCurrency(netWorthData.net_worth) : "—"}
-            subLabel={netWorthData ? `${netWorthData.account_count} account${netWorthData.account_count !== 1 ? "s" : ""}` : undefined}
+            subLabel={
+              netWorthData
+                ? `${netWorthData.account_count} account${netWorthData.account_count !== 1 ? "s" : ""}${netWorthData.manual_item_count > 0 ? ` + ${netWorthData.manual_item_count} manual item${netWorthData.manual_item_count !== 1 ? "s" : ""}` : ""}`
+                : undefined
+            }
             icon={Landmark}
             iconBg="bg-primary/10"
             valueClass={cn("text-2xl font-bold", (netWorthData?.net_worth ?? 0) >= 0 ? "text-foreground" : "text-red-500")}

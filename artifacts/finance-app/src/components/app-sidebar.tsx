@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, ReceiptText, Landmark, Target, Tag, BarChart2, Rocket, Settings } from "lucide-react";
+import { LayoutDashboard, ReceiptText, Landmark, Target, Tag, BarChart2, Rocket, Settings, Scale } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Sidebar,
@@ -18,6 +18,7 @@ const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Transactions", url: "/transactions", icon: ReceiptText },
   { title: "Accounts", url: "/accounts", icon: Landmark },
+  { title: "Assets & Liabilities", url: "/assets", icon: Scale },
   { title: "Budget", url: "/budget", icon: Target },
   { title: "Projects", url: "/projects", icon: Rocket },
   { title: "Reports", url: "/reports", icon: BarChart2 },
