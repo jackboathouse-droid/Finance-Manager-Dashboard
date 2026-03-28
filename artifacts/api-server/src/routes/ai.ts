@@ -3,8 +3,6 @@ import { db } from "@workspace/db";
 import {
   transactionsTable,
   categoriesTable,
-  budgetsTable,
-  accountsTable,
 } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import OpenAI from "openai";
@@ -63,6 +61,12 @@ function dateRangeClause(month: string, startDate?: string, endDate?: string) {
   return sql`to_char(${transactionsTable.date}, 'YYYY-MM') = ${month}`;
 }
 
+function personClause(person?: string) {
+  const trimmed = person?.trim();
+  if (!trimmed || trimmed.toLowerCase() === "total") return undefined;
+  return sql`LOWER(TRIM(${transactionsTable.person})) = LOWER(TRIM(${trimmed}))`;
+}
+
 // ── POST /api/ai/insights ─────────────────────────────────────────────────────
 
 router.post("/ai/insights", async (req, res) => {
@@ -82,11 +86,13 @@ router.post("/ai/insights", async (req, res) => {
     const month = (req.body?.month as string) || currentMonth();
     const startDate = req.body?.start_date as string | undefined;
     const endDate = req.body?.end_date as string | undefined;
+    const person = req.body?.person as string | undefined;
     const periodLabel: string = startDate && endDate
       ? `${startDate} to ${endDate}`
       : month;
 
     const dateClause = dateRangeClause(month, startDate, endDate);
+    const pc = personClause(person);
     const budgetMonth = startDate ? startDate.slice(0, 7) : month;
 
     // ── 1. Summary (income / expenses) ────────────────────────────────────
@@ -96,7 +102,7 @@ router.post("/ai/insights", async (req, res) => {
         total: sql<string>`SUM(${transactionsTable.amount})`,
       })
       .from(transactionsTable)
-      .where(and(eq(transactionsTable.user_id, userId), dateClause))
+      .where(and(eq(transactionsTable.user_id, userId), dateClause, pc))
       .groupBy(transactionsTable.type);
 
     let totalIncome = 0;
@@ -107,7 +113,8 @@ router.post("/ai/insights", async (req, res) => {
     }
 
     // ── 2. Full actuals by category (all expense categories, not limited) ──
-    // This query is unbounded so ALL budgeted categories get accurate actuals.
+    // Unbounded query so ALL budgeted categories get accurate actuals.
+    // Person filter applied so actuals match the currently filtered dashboard view.
     const actualsRows = await db
       .select({
         category_name: categoriesTable.name,
@@ -119,7 +126,8 @@ router.post("/ai/insights", async (req, res) => {
         and(
           eq(transactionsTable.user_id, userId),
           dateClause,
-          eq(transactionsTable.type, "expense")
+          eq(transactionsTable.type, "expense"),
+          pc
         )
       )
       .groupBy(categoriesTable.name)

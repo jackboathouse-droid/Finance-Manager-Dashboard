@@ -542,7 +542,7 @@ export default function Dashboard() {
       </div>
 
       {/* ── AI Insights ─────────────────────────────────────────────────── */}
-      <AiInsightsCard params={periodParams} />
+      <AiInsightsCard params={periodParams} person={personParam} />
 
       {/* ── Section 2: Budget vs Actual ────────────────────────────────── */}
       <div>
@@ -824,26 +824,30 @@ interface InsightsResponse {
   period: string;
 }
 
-function AiInsightsCard({ params }: { params: PeriodParams }) {
+function AiInsightsCard({ params, person }: { params: PeriodParams; person?: string }) {
   const [isOpen, setIsOpen] = useState(true);
 
-  // fetchedParams is the LOCKED period used for the current query.
-  // It starts equal to the initial params (auto-fetch on mount).
-  // It only changes when the user explicitly clicks Refresh.
-  // Period selector changes do NOT update fetchedParams (no auto-refresh).
+  // fetchedParams / fetchedPerson are the LOCKED period+person used for the current query.
+  // They start equal to the initial values (auto-fetch on mount).
+  // They only change when the user explicitly clicks Refresh.
+  // Period/person selector changes do NOT update these (no auto-refresh).
   const [fetchedParams, setFetchedParams] = useState<PeriodParams>(params);
+  const [fetchedPerson, setFetchedPerson] = useState<string | undefined>(person);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const buildBody = useCallback((p: PeriodParams): Record<string, string> => {
-    if (p.mode === "monthly") return { month: p.month };
-    return { start_date: p.startStr, end_date: p.endStr, month: p.startStr.slice(0, 7) };
+  const buildBody = useCallback((p: PeriodParams, _person?: string): Record<string, string> => {
+    const body: Record<string, string> = p.mode === "monthly"
+      ? { month: p.month }
+      : { start_date: p.startStr, end_date: p.endStr, month: p.startStr.slice(0, 7) };
+    if (_person && _person.toLowerCase() !== "total") body.person = _person;
+    return body;
   }, []);
 
-  const { data, isLoading, isError, error } = useQuery<InsightsResponse>({
-    // fetchedParams (not live params) in the key → period changes don't auto-refetch
-    queryKey: ["ai/insights", fetchedParams, refreshKey],
+  const { data, isLoading, isFetching, isError, error } = useQuery<InsightsResponse>({
+    // fetchedParams/fetchedPerson (not live values) in the key → selector changes don't auto-refetch
+    queryKey: ["ai/insights", fetchedParams, fetchedPerson, refreshKey],
     queryFn: async () => {
-      const body = buildBody(fetchedParams);
+      const body = buildBody(fetchedParams, fetchedPerson);
       const res = await fetch(`${BASE}/api/ai/insights`, {
         method: "POST",
         credentials: "include",
@@ -870,10 +874,11 @@ function AiInsightsCard({ params }: { params: PeriodParams }) {
   }, []);
 
   const handleRefresh = useCallback(() => {
-    // Lock the current live params and bump key to force re-fetch
+    // Lock the current live params+person and bump key to force re-fetch
     setFetchedParams(params);
+    setFetchedPerson(person);
     setRefreshKey((k) => k + 1);
-  }, [params]);
+  }, [params, person]);
 
   const errMsg = isError
     ? (error instanceof Error ? error.message : "Something went wrong. Please try again.")
@@ -921,8 +926,8 @@ function AiInsightsCard({ params }: { params: PeriodParams }) {
         {/* Collapsible body */}
         {isOpen && (
           <CardContent className="pt-0 pb-5 px-5 border-t border-border/40">
-            {/* Loading skeleton */}
-            {isLoading && (
+            {/* Loading skeleton — shown whenever a request is in flight (initial or refresh) */}
+            {isFetching && (
               <div className="pt-4 space-y-3 animate-pulse">
                 {[1, 2, 3].map((i) => (
                   <div key={i} className="flex items-start gap-3">
@@ -937,7 +942,7 @@ function AiInsightsCard({ params }: { params: PeriodParams }) {
             )}
 
             {/* Error state */}
-            {isError && !isLoading && (
+            {isError && !isFetching && (
               <div className="pt-4 flex flex-col items-center gap-3 text-center">
                 <div className="h-9 w-9 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
                   <AlertTriangle className="h-4.5 w-4.5 text-amber-600 dark:text-amber-400" />
@@ -951,8 +956,8 @@ function AiInsightsCard({ params }: { params: PeriodParams }) {
               </div>
             )}
 
-            {/* Insights list */}
-            {data && !isLoading && !isError && (
+            {/* Insights list — hidden while fetching to avoid stale-data flash */}
+            {data && !isFetching && !isError && (
               <ul className="pt-4 space-y-3">
                 {data.insights.map((insight, i) => (
                   <li key={i} className="flex items-start gap-3">

@@ -15,7 +15,6 @@
     "@types/nodemailer": "^7.0.11",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
-    "@workspace/integrations-openai-ai-server": "workspace:*",
     "openai": "^6.27.0",
     "bcryptjs": "^3.0.3",
     "connect-pg-simple": "^10.0.0",
