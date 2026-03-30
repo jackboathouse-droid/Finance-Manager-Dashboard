@@ -25,8 +25,13 @@ app.use(
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'none'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'"],
+        imgSrc: ["'self'"],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'"],
         frameAncestors: ["'none'"],
-        formAction: ["'none'"],
+        formAction: ["'self'"],
       },
     },
     // X-Frame-Options is superseded by CSP frameAncestors above but keep both
