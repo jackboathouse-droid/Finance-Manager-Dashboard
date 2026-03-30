@@ -18,12 +18,20 @@ const app: Express = express();
 app.set("trust proxy", 1);
 
 // ── Security headers ──────────────────────────────────────────────────────────
-// contentSecurityPolicy is disabled because this is a JSON API server (no HTML).
-// All other Helmet defaults are kept: X-Frame-Options, X-Content-Type-Options,
-// HSTS, Referrer-Policy, X-DNS-Prefetch-Control, etc.
+// This is a JSON API server; configure Helmet with a strict CSP that blocks
+// everything by default (no scripts, styles, or embeds expected from API responses).
 app.use(
   helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+        formAction: ["'none'"],
+      },
+    },
+    // X-Frame-Options is superseded by CSP frameAncestors above but keep both
+    // for older browser compatibility
+    frameguard: { action: "deny" },
   })
 );
 
@@ -48,27 +56,39 @@ app.use(
 );
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
-// Derive the allowed origin from FRONTEND_URL (or fall back to the Replit dev
-// domain / localhost for local development).  We extract just the scheme+host
-// part of the URL so the path prefix does not accidentally mismatch.
-function getAllowedOrigin(): string | string[] {
+// Build the list of allowed origins from FRONTEND_URL env var, the Replit dev
+// domain, and (in development) common localhost ports.
+function getAllowedOrigins(): string[] {
+  const origins: string[] = [];
+
   const frontendBase = getFrontendBase();
   try {
-    const { origin } = new URL(frontendBase);
-    return origin;
+    origins.push(new URL(frontendBase).origin);
   } catch {
-    return frontendBase;
+    origins.push(frontendBase);
   }
+
+  const isProduction = process.env["NODE_ENV"] === "production";
+  if (!isProduction) {
+    // Allow local development on common Vite/React ports
+    origins.push(
+      "http://localhost:3000",
+      "http://localhost:5173",
+      "http://localhost:5174",
+      "http://localhost:8080",
+    );
+  }
+
+  return [...new Set(origins)]; // deduplicate
 }
 
 app.use(
   cors({
     origin: (requestOrigin, callback) => {
-      const allowed = getAllowedOrigin();
-      // Allow requests with no Origin (same-origin / server-to-server)
+      const allowed = getAllowedOrigins();
+      // Allow requests with no Origin header (same-origin / server-to-server)
       if (!requestOrigin) return callback(null, true);
-      const allowedList = Array.isArray(allowed) ? allowed : [allowed];
-      if (allowedList.includes(requestOrigin)) {
+      if (allowed.includes(requestOrigin)) {
         callback(null, true);
       } else {
         callback(new Error(`CORS: origin '${requestOrigin}' not allowed`));
