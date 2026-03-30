@@ -86,6 +86,7 @@ export function TransactionForm({
   const selectedCategoryId = form.watch("category_id");
   const type = form.watch("type");
   const description = form.watch("description");
+  const amount = form.watch("amount");
 
   const { data: subcategories = [] as Subcategory[] } = useGetSubcategories(
     { category_id: selectedCategoryId ?? undefined },
@@ -115,18 +116,19 @@ export function TransactionForm({
       return;
     }
 
-    // Don't re-fetch the same description
+    // Don't re-fetch the exact same description
     if (trimmed === lastFetchedDescRef.current) return;
 
     debounceTimerRef.current = setTimeout(async () => {
       lastFetchedDescRef.current = trimmed;
       setAiLoading(true);
       try {
+        const absAmount = amount !== undefined && !isNaN(Number(amount)) ? Math.abs(Number(amount)) : undefined;
         const response = await fetch("/api/ai/categorise", {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ description: trimmed, type }),
+          body: JSON.stringify({ description: trimmed, amount: absAmount, type }),
         });
         if (!response.ok) { setAiSuggestion(null); return; }
         const data: AiSuggestion | null = await response.json();
@@ -141,7 +143,7 @@ export function TransactionForm({
     return () => {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     };
-  }, [description, type]);
+  }, [description, type, amount]);
 
   // Reset suggestion when type changes (also resets category)
   useEffect(() => {
@@ -433,7 +435,7 @@ export function TransactionForm({
                 <span>AI is thinking…</span>
               </div>
             )}
-            {aiSuggestion && !form.watch("category_id") && (
+            {aiSuggestion && (
               <div className="flex items-center gap-2 rounded-md bg-[#4FC3F7]/10 border border-[#4FC3F7]/30 px-3 py-1.5">
                 <Sparkles className="h-3.5 w-3.5 text-[#4FC3F7] flex-shrink-0" />
                 <span className="text-xs text-foreground flex-1">
@@ -448,7 +450,7 @@ export function TransactionForm({
                   onClick={acceptAiSuggestion}
                   className="text-xs font-medium text-[#4FC3F7] hover:text-[#29B6F6] transition-colors"
                 >
-                  Accept
+                  {form.watch("category_id") ? "Replace" : "Accept"}
                 </button>
                 <button
                   type="button"
