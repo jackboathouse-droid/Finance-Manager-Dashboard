@@ -102,8 +102,8 @@ if (googleOAuthEnabled) {
           // Seed default categories for new Google user (awaited — user should have categories on first login)
           try {
             await seedUserCategories(newUser.id);
-          } catch {
-            // Non-fatal: log but don't block OAuth flow
+          } catch (seedErr) {
+            console.error("[google-auth] seedUserCategories failed for new OAuth user", seedErr);
           }
 
           return done(null, newUser);
