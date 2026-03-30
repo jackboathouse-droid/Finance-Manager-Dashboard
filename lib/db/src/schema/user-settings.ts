@@ -15,6 +15,8 @@ export const userSettingsTable = pgTable(
     rollover_budget: boolean("rollover_budget").notNull().default(false),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    last_budget_alert_sent: timestamp("last_budget_alert_sent", { withTimezone: true }),
+    last_weekly_digest_sent: timestamp("last_weekly_digest_sent", { withTimezone: true }),
   },
   (t) => [unique("user_settings_user_id_key").on(t.user_id)]
 );

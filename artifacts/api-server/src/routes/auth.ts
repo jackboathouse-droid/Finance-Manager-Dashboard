@@ -19,6 +19,7 @@ import { sql } from "drizzle-orm";
 import * as nodemailer from "nodemailer";
 import passport from "../lib/google-auth";
 import { googleOAuthEnabled, getFrontendBase } from "../lib/google-auth";
+import { sendMail, buildWelcomeEmail } from "../lib/mailer";
 
 const router: IRouter = Router();
 
@@ -149,6 +150,11 @@ router.post("/auth/register", async (req, res) => {
     await new Promise<void>((resolve, reject) =>
       req.session.save((err) => (err ? reject(err) : resolve()))
     );
+
+    // Send welcome email (non-blocking — don't fail registration if email fails)
+    const frontendBase = getFrontendBase();
+    const welcome = buildWelcomeEmail(newUser.full_name, frontendBase);
+    sendMail({ to: newUser.email, ...welcome }, req.log).catch(() => {});
 
     return res.status(201).json({ success: true, username: normalizedEmail });
   } catch (err) {

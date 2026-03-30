@@ -6,8 +6,18 @@ import {
   subcategoriesTable,
   budgetsTable,
   accountsTable,
+  usersTable,
+  userSettingsTable,
 } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
+import type { Logger } from "pino";
+import {
+  sendMail,
+  buildBudgetAlertEmail,
+  buildWeeklyDigestEmail,
+  type WeeklyDigestData,
+} from "../lib/mailer";
+import { getFrontendBase } from "../lib/google-auth";
 
 const router: IRouter = Router();
 
@@ -89,6 +99,9 @@ router.get("/dashboard/summary", async (req, res) => {
     }
 
     res.json({ total_income, total_expenses, net_cash_flow: total_income - total_expenses, month });
+
+    // Trigger weekly digest lazily on summary load (non-blocking)
+    maybeSendWeeklyDigest(userId, req.log).catch(() => {});
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Failed to fetch dashboard summary" });
@@ -319,11 +332,176 @@ router.get("/dashboard/budget-vs-actual", async (req, res) => {
       });
 
     res.json(chartData);
+
+    // Fire budget alert email lazily (non-blocking, no weekly mode)
+    if (!startDate && !endDate) {
+      maybeSendBudgetAlert(userId, budgetMonth, chartData, req.log).catch(() => {});
+    }
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Failed to fetch budget vs actual" });
   }
 });
+
+// ── Email trigger helpers ─────────────────────────────────────────────────────
+
+/** Fire-and-forget budget alert email if conditions are met */
+async function maybeSendBudgetAlert(
+  userId: number,
+  month: string,
+  chartData: Array<{ category: string; budget: number; actual: number }>,
+  logger: Logger
+): Promise<void> {
+  try {
+    const [settings] = await db
+      .select({
+        budget_alerts: userSettingsTable.budget_alerts,
+        last_budget_alert_sent: userSettingsTable.last_budget_alert_sent,
+      })
+      .from(userSettingsTable)
+      .where(eq(userSettingsTable.user_id, userId));
+
+    if (!settings?.budget_alerts) return;
+
+    // Throttle: only send once per 24 hours per user
+    if (settings.last_budget_alert_sent) {
+      const hoursSince =
+        (Date.now() - new Date(settings.last_budget_alert_sent).getTime()) / 3_600_000;
+      if (hoursSince < 24) return;
+    }
+
+    const alerts = chartData
+      .filter((r) => r.budget > 0 && r.actual / r.budget >= 0.9)
+      .map((r) => ({ category: r.category, budget: r.budget, actual: r.actual, pct: (r.actual / r.budget) * 100 }));
+
+    if (alerts.length === 0) return;
+
+    const [user] = await db
+      .select({ email: usersTable.email, full_name: usersTable.full_name })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId));
+
+    if (!user) return;
+
+    const email = buildBudgetAlertEmail(user.full_name, month, alerts, getFrontendBase());
+    const sent = await sendMail({ to: user.email, ...email }, logger);
+
+    if (sent) {
+      await db.execute(sql`
+        UPDATE user_settings SET last_budget_alert_sent = NOW() WHERE user_id = ${userId}
+      `);
+    }
+  } catch (err) {
+    logger.error({ err }, "maybeSendBudgetAlert failed");
+  }
+}
+
+/** Fire-and-forget weekly digest email if conditions are met */
+async function maybeSendWeeklyDigest(
+  userId: number,
+  logger: Logger
+): Promise<void> {
+  try {
+    const [settings] = await db
+      .select({
+        weekly_summary: userSettingsTable.weekly_summary,
+        last_weekly_digest_sent: userSettingsTable.last_weekly_digest_sent,
+      })
+      .from(userSettingsTable)
+      .where(eq(userSettingsTable.user_id, userId));
+
+    if (!settings?.weekly_summary) return;
+
+    // Throttle: only send if >6 days since last digest
+    if (settings.last_weekly_digest_sent) {
+      const daysSince =
+        (Date.now() - new Date(settings.last_weekly_digest_sent).getTime()) / 86_400_000;
+      if (daysSince < 6) return;
+    }
+
+    // Previous week: Mon–Sun
+    const now = new Date();
+    const dayOfWeek = now.getDay(); // 0=Sun
+    const daysSinceMonday = (dayOfWeek + 6) % 7; // days since last Mon
+    const lastMonday = new Date(now);
+    lastMonday.setDate(now.getDate() - daysSinceMonday - 7);
+    lastMonday.setHours(0, 0, 0, 0);
+    const lastSunday = new Date(lastMonday);
+    lastSunday.setDate(lastMonday.getDate() + 6);
+    lastSunday.setHours(23, 59, 59, 999);
+
+    const startStr = lastMonday.toISOString().split("T")[0];
+    const endStr = lastSunday.toISOString().split("T")[0];
+    const weekLabel = `${lastMonday.toLocaleDateString("en-US", { month: "short", day: "numeric" })}–${lastSunday.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+
+    const results = await db
+      .select({
+        type: transactionsTable.type,
+        total: sql<string>`SUM(${transactionsTable.amount})`,
+      })
+      .from(transactionsTable)
+      .where(
+        and(
+          eq(transactionsTable.user_id, userId),
+          sql`${transactionsTable.date} >= ${startStr}::date AND ${transactionsTable.date} <= ${endStr}::date`
+        )
+      )
+      .groupBy(transactionsTable.type);
+
+    let totalIncome = 0;
+    let totalExpenses = 0;
+    for (const r of results) {
+      if (r.type === "income") totalIncome = parseFloat(r.total ?? "0");
+      else if (r.type === "expense") totalExpenses = Math.abs(parseFloat(r.total ?? "0"));
+    }
+
+    // Top category by spending
+    const topRows = await db
+      .select({
+        category: categoriesTable.name,
+        amount: sql<string>`SUM(ABS(${transactionsTable.amount}))`,
+      })
+      .from(transactionsTable)
+      .leftJoin(categoriesTable, eq(transactionsTable.category_id, categoriesTable.id))
+      .where(
+        and(
+          eq(transactionsTable.user_id, userId),
+          eq(transactionsTable.type, "expense"),
+          sql`${transactionsTable.date} >= ${startStr}::date AND ${transactionsTable.date} <= ${endStr}::date`
+        )
+      )
+      .groupBy(categoriesTable.name)
+      .orderBy(sql`SUM(ABS(${transactionsTable.amount})) DESC`)
+      .limit(1);
+
+    const digestData: WeeklyDigestData = {
+      weekLabel,
+      totalIncome,
+      totalExpenses,
+      netCashFlow: totalIncome - totalExpenses,
+      topCategory: topRows[0]?.category ?? null,
+      topCategoryAmount: topRows[0] ? parseFloat(topRows[0].amount ?? "0") : 0,
+    };
+
+    const [user] = await db
+      .select({ email: usersTable.email, full_name: usersTable.full_name })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId));
+
+    if (!user) return;
+
+    const email = buildWeeklyDigestEmail(user.full_name, digestData, getFrontendBase());
+    const sent = await sendMail({ to: user.email, ...email }, logger);
+
+    if (sent) {
+      await db.execute(sql`
+        UPDATE user_settings SET last_weekly_digest_sent = NOW() WHERE user_id = ${userId}
+      `);
+    }
+  } catch (err) {
+    logger.error({ err }, "maybeSendWeeklyDigest failed");
+  }
+}
 
 // ── Net worth ─────────────────────────────────────────────────────────────────
 // Consolidated figure: account balances + manual assets - manual liabilities
