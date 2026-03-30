@@ -6,7 +6,7 @@ import {
   categoriesTable,
   subcategoriesTable,
 } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, or } from "drizzle-orm";
 import { categoryBelongsToUser, subcategoryBelongsToUser } from "../lib/validate-ownership";
 
 const router: IRouter = Router();
@@ -26,12 +26,12 @@ const TX_SELECT = {
   subcategory_name: subcategoriesTable.name,
 };
 
-function withJoins(q: ReturnType<typeof db.select>) {
+function withJoins(q: ReturnType<typeof db.select>, userId: number) {
   return (q as any)
     .from(transactionsTable)
     .leftJoin(accountsTable, eq(transactionsTable.account_id, accountsTable.id))
-    .leftJoin(categoriesTable, eq(transactionsTable.category_id, categoriesTable.id))
-    .leftJoin(subcategoriesTable, eq(transactionsTable.subcategory_id, subcategoriesTable.id));
+    .leftJoin(categoriesTable, and(eq(transactionsTable.category_id, categoriesTable.id), eq(categoriesTable.user_id, userId)))
+    .leftJoin(subcategoriesTable, and(eq(transactionsTable.subcategory_id, subcategoriesTable.id), eq(subcategoriesTable.user_id, userId)));
 }
 
 router.get("/transactions", async (req, res) => {
@@ -54,8 +54,8 @@ router.get("/transactions", async (req, res) => {
       .select(TX_SELECT)
       .from(transactionsTable)
       .leftJoin(accountsTable, eq(transactionsTable.account_id, accountsTable.id))
-      .leftJoin(categoriesTable, eq(transactionsTable.category_id, categoriesTable.id))
-      .leftJoin(subcategoriesTable, eq(transactionsTable.subcategory_id, subcategoriesTable.id))
+      .leftJoin(categoriesTable, and(eq(transactionsTable.category_id, categoriesTable.id), eq(categoriesTable.user_id, userId)))
+      .leftJoin(subcategoriesTable, and(eq(transactionsTable.subcategory_id, subcategoriesTable.id), eq(subcategoriesTable.user_id, userId)))
       .where(and(...conditions))
       .orderBy(sql`${transactionsTable.date} DESC`);
 
@@ -210,8 +210,8 @@ router.get("/transactions/:id", async (req, res) => {
       .select(TX_SELECT)
       .from(transactionsTable)
       .leftJoin(accountsTable, eq(transactionsTable.account_id, accountsTable.id))
-      .leftJoin(categoriesTable, eq(transactionsTable.category_id, categoriesTable.id))
-      .leftJoin(subcategoriesTable, eq(transactionsTable.subcategory_id, subcategoriesTable.id))
+      .leftJoin(categoriesTable, and(eq(transactionsTable.category_id, categoriesTable.id), eq(categoriesTable.user_id, userId)))
+      .leftJoin(subcategoriesTable, and(eq(transactionsTable.subcategory_id, subcategoriesTable.id), eq(subcategoriesTable.user_id, userId)))
       .where(and(eq(transactionsTable.id, id), eq(transactionsTable.user_id, userId)));
 
     if (!tx) return res.status(404).json({ error: "Transaction not found" });

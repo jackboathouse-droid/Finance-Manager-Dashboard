@@ -513,8 +513,13 @@ export default function Categories() {
         toast({ title: "Category deleted" });
         setDeletingCat(null);
       },
-      onError: (err: any) => {
-        const msg = err?.response?.data?.error ?? err?.message ?? "Failed to delete";
+      onError: (err: unknown) => {
+        const msg =
+          err instanceof Error
+            ? err.message
+            : typeof err === "object" && err !== null && "response" in err
+            ? ((err as { response?: { data?: { error?: string } } }).response?.data?.error ?? "Failed to delete")
+            : "Failed to delete";
         toast({ title: msg, variant: "destructive" });
         setDeletingCat(null);
       },
@@ -538,8 +543,13 @@ export default function Categories() {
         toast({ title: "Subcategory deleted" });
         setDeletingSub(null);
       },
-      onError: (err: any) => {
-        const msg = err?.response?.data?.error ?? err?.message ?? "Failed to delete";
+      onError: (err: unknown) => {
+        const msg =
+          err instanceof Error
+            ? err.message
+            : typeof err === "object" && err !== null && "response" in err
+            ? ((err as { response?: { data?: { error?: string } } }).response?.data?.error ?? "Failed to delete")
+            : "Failed to delete";
         toast({ title: msg, variant: "destructive" });
         setDeletingSub(null);
       },

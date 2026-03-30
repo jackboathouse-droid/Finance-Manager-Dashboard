@@ -9,7 +9,7 @@ import {
   usersTable,
   userSettingsTable,
 } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, or } from "drizzle-orm";
 import type { Logger } from "pino";
 import {
   sendMail,
@@ -173,7 +173,7 @@ router.get("/dashboard/category-chart", async (req, res) => {
         amount: sql<string>`SUM(ABS(${transactionsTable.amount}))`,
       })
       .from(transactionsTable)
-      .leftJoin(categoriesTable, eq(transactionsTable.category_id, categoriesTable.id))
+      .leftJoin(categoriesTable, and(eq(transactionsTable.category_id, categoriesTable.id), eq(categoriesTable.user_id, userId)))
       .where(
         and(
           eq(transactionsTable.user_id, userId),
@@ -221,8 +221,8 @@ router.get("/dashboard/subcategory-chart", async (req, res) => {
         amount: sql<string>`SUM(ABS(${transactionsTable.amount}))`,
       })
       .from(transactionsTable)
-      .leftJoin(subcategoriesTable, eq(transactionsTable.subcategory_id, subcategoriesTable.id))
-      .leftJoin(categoriesTable, eq(transactionsTable.category_id, categoriesTable.id))
+      .leftJoin(subcategoriesTable, and(eq(transactionsTable.subcategory_id, subcategoriesTable.id), eq(subcategoriesTable.user_id, userId)))
+      .leftJoin(categoriesTable, and(eq(transactionsTable.category_id, categoriesTable.id), eq(categoriesTable.user_id, userId)))
       .where(
         and(
           eq(transactionsTable.user_id, userId),
@@ -284,7 +284,7 @@ router.get("/dashboard/budget-vs-actual", async (req, res) => {
         c.name AS category_name,
         SUM(b.budget_amount) AS budget_amount
       FROM budgets b
-      JOIN categories c ON b.category_id = c.id
+      JOIN categories c ON b.category_id = c.id AND c.user_id = ${userId}
       WHERE b.user_id = ${userId}
         AND b.month = ${budgetMonth}
       GROUP BY c.id, c.name
@@ -465,7 +465,7 @@ async function maybeSendWeeklyDigest(
         amount: sql<string>`SUM(ABS(${transactionsTable.amount}))`,
       })
       .from(transactionsTable)
-      .leftJoin(categoriesTable, eq(transactionsTable.category_id, categoriesTable.id))
+      .leftJoin(categoriesTable, and(eq(transactionsTable.category_id, categoriesTable.id), eq(categoriesTable.user_id, userId)))
       .where(
         and(
           eq(transactionsTable.user_id, userId),

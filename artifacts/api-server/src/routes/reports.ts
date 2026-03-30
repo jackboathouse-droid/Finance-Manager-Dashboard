@@ -6,7 +6,7 @@ import {
   categoriesTable,
   subcategoriesTable,
 } from "@workspace/db";
-import { eq, and, gte, lte, sql, ne } from "drizzle-orm";
+import { eq, and, gte, lte, sql, ne, or } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -95,7 +95,7 @@ router.get("/reports/profit-loss", async (req, res) => {
         amount: sql<string>`SUM(ABS(${transactionsTable.amount}))`,
       })
       .from(transactionsTable)
-      .leftJoin(categoriesTable, eq(transactionsTable.category_id, categoriesTable.id))
+      .leftJoin(categoriesTable, and(eq(transactionsTable.category_id, categoriesTable.id), eq(categoriesTable.user_id, userId)))
       .where(and(...byCategoryConds))
       .groupBy(categoriesTable.name)
       .orderBy(sql`SUM(ABS(${transactionsTable.amount})) DESC`);
@@ -207,7 +207,7 @@ router.get("/reports/spending", async (req, res) => {
         amount: sql<string>`SUM(ABS(${transactionsTable.amount}))`,
       })
       .from(transactionsTable)
-      .leftJoin(categoriesTable, eq(transactionsTable.category_id, categoriesTable.id))
+      .leftJoin(categoriesTable, and(eq(transactionsTable.category_id, categoriesTable.id), eq(categoriesTable.user_id, userId)))
       .where(and(...baseConds))
       .groupBy(categoriesTable.name)
       .orderBy(sql`SUM(ABS(${transactionsTable.amount})) DESC`);
@@ -220,8 +220,8 @@ router.get("/reports/spending", async (req, res) => {
         amount: sql<string>`SUM(ABS(${transactionsTable.amount}))`,
       })
       .from(transactionsTable)
-      .leftJoin(subcategoriesTable, eq(transactionsTable.subcategory_id, subcategoriesTable.id))
-      .leftJoin(categoriesTable, eq(transactionsTable.category_id, categoriesTable.id))
+      .leftJoin(subcategoriesTable, and(eq(transactionsTable.subcategory_id, subcategoriesTable.id), eq(subcategoriesTable.user_id, userId)))
+      .leftJoin(categoriesTable, and(eq(transactionsTable.category_id, categoriesTable.id), eq(categoriesTable.user_id, userId)))
       .where(and(...baseConds, sql`${transactionsTable.subcategory_id} IS NOT NULL`))
       .groupBy(subcategoriesTable.name, categoriesTable.name)
       .orderBy(sql`SUM(ABS(${transactionsTable.amount})) DESC`)
@@ -285,8 +285,8 @@ router.get("/reports/transactions", async (req, res) => {
       })
       .from(transactionsTable)
       .leftJoin(accountsTable, eq(transactionsTable.account_id, accountsTable.id))
-      .leftJoin(categoriesTable, eq(transactionsTable.category_id, categoriesTable.id))
-      .leftJoin(subcategoriesTable, eq(transactionsTable.subcategory_id, subcategoriesTable.id))
+      .leftJoin(categoriesTable, and(eq(transactionsTable.category_id, categoriesTable.id), eq(categoriesTable.user_id, userId)))
+      .leftJoin(subcategoriesTable, and(eq(transactionsTable.subcategory_id, subcategoriesTable.id), eq(subcategoriesTable.user_id, userId)))
       .where(and(...conds))
       .orderBy(sql`${transactionsTable.date} DESC`)
       .limit(500);

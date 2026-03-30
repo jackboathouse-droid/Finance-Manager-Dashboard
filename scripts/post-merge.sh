@@ -161,6 +161,49 @@ BEGIN
     END IF;
   END LOOP;
 END$$;
+
+-- Null out cross-user category/subcategory references in transactions
+-- (transactions whose category_id points to a category owned by a different user)
+-- This ensures join-side user scoping is consistent with the data layer.
+DO $$
+BEGIN
+  -- Only run if the user_id column exists on categories (i.e. migration has been applied)
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'categories' AND column_name = 'user_id'
+  ) THEN
+    -- Null out subcategory_id references to subcategories owned by a different user
+    UPDATE transactions t
+    SET subcategory_id = NULL
+    FROM subcategories s
+    WHERE t.subcategory_id = s.id
+      AND s.user_id IS NOT NULL
+      AND t.user_id != s.user_id;
+
+    -- Null out category_id references to categories owned by a different user
+    UPDATE transactions t
+    SET category_id = NULL
+    FROM categories c
+    WHERE t.category_id = c.id
+      AND c.user_id IS NOT NULL
+      AND t.user_id != c.user_id;
+
+    -- Same for budgets
+    UPDATE budgets b
+    SET category_id = NULL
+    FROM categories c
+    WHERE b.category_id = c.id
+      AND c.user_id IS NOT NULL
+      AND b.user_id != c.user_id;
+
+    UPDATE budgets b
+    SET subcategory_id = NULL
+    FROM subcategories s
+    WHERE b.subcategory_id = s.id
+      AND s.user_id IS NOT NULL
+      AND b.user_id != s.user_id;
+  END IF;
+END$$;
 SQL
 
 pnpm --filter db push
