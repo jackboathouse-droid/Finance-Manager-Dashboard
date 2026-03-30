@@ -129,10 +129,12 @@ router.post("/auth/register", async (req, res) => {
       })
       .returning();
 
-    // Seed default categories for this new user (non-blocking — don't fail registration)
-    seedUserCategories(newUser.id).catch((err) =>
-      req.log.error({ err }, "seedUserCategories failed for new email user")
-    );
+    // Seed default categories for this new user (awaited — user should have categories on first login)
+    try {
+      await seedUserCategories(newUser.id);
+    } catch (seedErr) {
+      req.log.error({ err: seedErr }, "seedUserCategories failed for new email user");
+    }
 
     setUserSession(req, newUser);
     req.log.info({ userId: newUser.id, email: newUser.email }, "New user registered");

@@ -99,8 +99,12 @@ if (googleOAuthEnabled) {
             })
             .returning();
 
-          // Seed default categories for new Google user (fire-and-forget)
-          seedUserCategories(newUser.id).catch(() => {});
+          // Seed default categories for new Google user (awaited — user should have categories on first login)
+          try {
+            await seedUserCategories(newUser.id);
+          } catch {
+            // Non-fatal: log but don't block OAuth flow
+          }
 
           return done(null, newUser);
         } catch (err) {

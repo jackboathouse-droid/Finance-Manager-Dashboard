@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { budgetsTable, categoriesTable, subcategoriesTable, transactionsTable } from "@workspace/db";
-import { eq, and, sql, lt } from "drizzle-orm";
+import { eq, and, sql, lt, or } from "drizzle-orm";
 import { categoryBelongsToUser, subcategoryBelongsToUser } from "../lib/validate-ownership";
 
 const router: IRouter = Router();
@@ -89,8 +89,8 @@ router.get("/budgets", async (req, res) => {
     const results = await db
       .select(BUDGET_SELECT)
       .from(budgetsTable)
-      .leftJoin(categoriesTable, eq(budgetsTable.category_id, categoriesTable.id))
-      .leftJoin(subcategoriesTable, eq(budgetsTable.subcategory_id, subcategoriesTable.id))
+      .leftJoin(categoriesTable, and(eq(budgetsTable.category_id, categoriesTable.id), eq(categoriesTable.user_id, userId)))
+      .leftJoin(subcategoriesTable, and(eq(budgetsTable.subcategory_id, subcategoriesTable.id), eq(subcategoriesTable.user_id, userId)))
       .where(and(...conditions));
 
     res.json(results.map((r) => ({ ...r, budget_amount: toFloat(r.budget_amount) })));
@@ -115,8 +115,8 @@ router.get("/budgets/detailed", async (req, res) => {
     const budgets = await db
       .select(BUDGET_SELECT)
       .from(budgetsTable)
-      .leftJoin(categoriesTable, eq(budgetsTable.category_id, categoriesTable.id))
-      .leftJoin(subcategoriesTable, eq(budgetsTable.subcategory_id, subcategoriesTable.id))
+      .leftJoin(categoriesTable, and(eq(budgetsTable.category_id, categoriesTable.id), eq(categoriesTable.user_id, userId)))
+      .leftJoin(subcategoriesTable, and(eq(budgetsTable.subcategory_id, subcategoriesTable.id), eq(subcategoriesTable.user_id, userId)))
       .where(and(eq(budgetsTable.user_id, userId), eq(budgetsTable.month, month)));
 
     // Actual spending per category
@@ -257,9 +257,9 @@ router.post("/budgets", async (req, res) => {
     const [enriched] = await db
       .select(BUDGET_SELECT)
       .from(budgetsTable)
-      .leftJoin(categoriesTable, eq(budgetsTable.category_id, categoriesTable.id))
-      .leftJoin(subcategoriesTable, eq(budgetsTable.subcategory_id, subcategoriesTable.id))
-      .where(eq(budgetsTable.id, budget.id));
+      .leftJoin(categoriesTable, and(eq(budgetsTable.category_id, categoriesTable.id), eq(categoriesTable.user_id, userId)))
+      .leftJoin(subcategoriesTable, and(eq(budgetsTable.subcategory_id, subcategoriesTable.id), eq(subcategoriesTable.user_id, userId)))
+      .where(and(eq(budgetsTable.id, budget.id), eq(budgetsTable.user_id, userId)));
 
     res.status(201).json({ ...enriched, budget_amount: toFloat(enriched!.budget_amount) });
   } catch (err) {
@@ -306,9 +306,9 @@ router.put("/budgets/:id", async (req, res) => {
     const [enriched] = await db
       .select(BUDGET_SELECT)
       .from(budgetsTable)
-      .leftJoin(categoriesTable, eq(budgetsTable.category_id, categoriesTable.id))
-      .leftJoin(subcategoriesTable, eq(budgetsTable.subcategory_id, subcategoriesTable.id))
-      .where(eq(budgetsTable.id, id));
+      .leftJoin(categoriesTable, and(eq(budgetsTable.category_id, categoriesTable.id), eq(categoriesTable.user_id, userId)))
+      .leftJoin(subcategoriesTable, and(eq(budgetsTable.subcategory_id, subcategoriesTable.id), eq(subcategoriesTable.user_id, userId)))
+      .where(and(eq(budgetsTable.id, id), eq(budgetsTable.user_id, userId)));
 
     if (!enriched) return res.status(404).json({ error: "Budget not found" });
     res.json({ ...enriched, budget_amount: toFloat(enriched.budget_amount) });

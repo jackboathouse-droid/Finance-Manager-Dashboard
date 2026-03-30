@@ -265,9 +265,9 @@ router.put("/transactions/:id", async (req, res) => {
       .select(TX_SELECT)
       .from(transactionsTable)
       .leftJoin(accountsTable, eq(transactionsTable.account_id, accountsTable.id))
-      .leftJoin(categoriesTable, eq(transactionsTable.category_id, categoriesTable.id))
-      .leftJoin(subcategoriesTable, eq(transactionsTable.subcategory_id, subcategoriesTable.id))
-      .where(eq(transactionsTable.id, id));
+      .leftJoin(categoriesTable, and(eq(transactionsTable.category_id, categoriesTable.id), eq(categoriesTable.user_id, userId)))
+      .leftJoin(subcategoriesTable, and(eq(transactionsTable.subcategory_id, subcategoriesTable.id), eq(subcategoriesTable.user_id, userId)))
+      .where(and(eq(transactionsTable.id, id), eq(transactionsTable.user_id, userId)));
 
     if (!enriched) return res.status(404).json({ error: "Transaction not found" });
     res.json({ ...enriched, amount: parseFloat(enriched.amount) });
