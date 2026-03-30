@@ -302,28 +302,43 @@ export default function Transactions() {
               ) : transactions?.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={colSpan} className="text-center py-16">
-                    <div className="flex flex-col items-center">
-                      <img
-                        src={`${import.meta.env.BASE_URL}images/empty-state.png`}
-                        alt="Empty"
-                        className="w-20 h-20 opacity-40 mb-3"
-                      />
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="h-14 w-14 rounded-full bg-muted/50 flex items-center justify-center mb-1">
+                        <Upload className="h-6 w-6 text-muted-foreground/40" />
+                      </div>
                       <p className="text-muted-foreground font-medium text-sm">
-                        No transactions found
+                        {hasActiveFilters ? "No transactions match your filters" : "No transactions yet"}
                       </p>
-                      <p className="text-xs text-muted-foreground/70 mt-1">
+                      <p className="text-xs text-muted-foreground/60">
                         {hasActiveFilters
-                          ? "Try adjusting your filters."
-                          : "Add your first transaction to get started."}
+                          ? "Try adjusting your filters to see more results."
+                          : "Add a transaction manually or import from CSV to get started."}
                       </p>
-                      {hasActiveFilters && (
+                      {hasActiveFilters ? (
                         <Button
-                          variant="link"
-                          className="mt-2 text-xs h-auto p-0"
+                          variant="outline"
+                          size="sm"
+                          className="mt-2"
                           onClick={clearFilters}
                         >
                           Clear filters
                         </Button>
+                      ) : (
+                        <div className="flex gap-2 mt-2">
+                          <Button
+                            size="sm"
+                            onClick={() => { setEditingTx(null); setIsFormOpen(true); }}
+                          >
+                            <Plus className="mr-1.5 h-3.5 w-3.5" /> Add Transaction
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setIsImportOpen(true)}
+                          >
+                            <Upload className="mr-1.5 h-3.5 w-3.5" /> Import CSV
+                          </Button>
+                        </div>
                       )}
                     </div>
                   </TableCell>

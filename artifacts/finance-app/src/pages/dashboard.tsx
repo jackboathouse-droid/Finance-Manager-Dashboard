@@ -57,6 +57,7 @@ import {
   Sparkles,
   RefreshCw,
   ChevronDown,
+  Circle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -295,6 +296,113 @@ function ViewModeToggle({ value, onChange }: { value: "monthly" | "weekly"; onCh
   );
 }
 
+// ── Getting Started card ──────────────────────────────────────────────────────
+
+interface OnboardingStatus {
+  steps: { account: boolean; transaction: boolean; budget: boolean };
+  completed: boolean;
+}
+
+function GettingStartedCard({ status }: { status: OnboardingStatus }) {
+  const steps = [
+    {
+      key: "account" as const,
+      label: "Add your first account",
+      description: "Connect a bank account or credit card",
+      href: "/accounts",
+      done: status.steps.account,
+    },
+    {
+      key: "transaction" as const,
+      label: "Add a transaction",
+      description: "Record income, expense, or a transfer",
+      href: "/transactions",
+      done: status.steps.transaction,
+    },
+    {
+      key: "budget" as const,
+      label: "Set a budget",
+      description: "Allocate spending limits by category",
+      href: "/budget",
+      done: status.steps.budget,
+    },
+  ];
+
+  const completedCount = steps.filter((s) => s.done).length;
+
+  return (
+    <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-background to-background shadow-sm">
+      <CardContent className="pt-6 pb-5">
+        <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <Rocket className="h-5 w-5 text-primary" />
+              <h2 className="text-lg font-bold">Getting Started</h2>
+              <Badge variant="secondary" className="text-xs font-semibold">
+                {completedCount}/3
+              </Badge>
+            </div>
+            <p className="text-sm text-muted-foreground mb-5">
+              Complete these steps to get the most out of Bubble.
+            </p>
+            <div className="space-y-3">
+              {steps.map((step, idx) => (
+                <div key={step.key} className="flex items-center gap-3">
+                  <div className={cn(
+                    "flex-shrink-0 h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors",
+                    step.done
+                      ? "bg-primary border-primary text-primary-foreground"
+                      : "border-border text-muted-foreground bg-background"
+                  )}>
+                    {step.done ? <CheckCircle2 className="h-4 w-4" /> : <span>{idx + 1}</span>}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={cn(
+                        "text-sm font-semibold",
+                        step.done ? "line-through text-muted-foreground" : "text-foreground"
+                      )}>
+                        {step.label}
+                      </span>
+                      {!step.done && (
+                        <Link href={step.href}>
+                          <span className="text-xs text-primary font-medium hover:underline cursor-pointer">
+                            Go →
+                          </span>
+                        </Link>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">{step.description}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Progress ring placeholder */}
+          <div className="flex flex-col items-center justify-center sm:pl-4 gap-1">
+            <div className="relative h-16 w-16">
+              <svg viewBox="0 0 36 36" className="h-full w-full -rotate-90">
+                <circle cx="18" cy="18" r="15.9" fill="none" stroke="hsl(var(--border))" strokeWidth="3" />
+                <circle
+                  cx="18" cy="18" r="15.9" fill="none"
+                  stroke="#4FC3F7" strokeWidth="3"
+                  strokeDasharray={`${(completedCount / 3) * 100} 100`}
+                  strokeLinecap="round"
+                  className="transition-all duration-500"
+                />
+              </svg>
+              <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-foreground">
+                {Math.round((completedCount / 3) * 100)}%
+              </span>
+            </div>
+            <span className="text-xs text-muted-foreground whitespace-nowrap">Complete</span>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Section header ────────────────────────────────────────────────────────────
 
 function SectionLabel({ label }: { label: string }) {
@@ -363,6 +471,17 @@ export default function Dashboard() {
     : { mode: "weekly", startStr: week.startStr, endStr: week.endStr, person: personParam };
 
   const { summary, categoryData, budgetData } = useDashboardData(periodParams);
+
+  // Onboarding status
+  const { data: onboardingData } = useQuery<OnboardingStatus>({
+    queryKey: ["onboarding/status"],
+    queryFn: async () => {
+      const res = await fetch(`${BASE}/api/onboarding/status`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load onboarding status");
+      return res.json();
+    },
+    staleTime: 10_000,
+  });
 
   // Net worth (includes manual assets & liabilities)
   const { data: netWorthData } = useQuery<{
@@ -480,6 +599,11 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* ── Getting Started (only shown while onboarding is incomplete) ── */}
+      {onboardingData && !onboardingData.completed && (
+        <GettingStartedCard status={onboardingData} />
+      )}
 
       {/* ── Section 1: Financial Snapshot ──────────────────────────────── */}
       <div>

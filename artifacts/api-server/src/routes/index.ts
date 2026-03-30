@@ -13,6 +13,7 @@ import settingsRouter from "./settings";
 import peopleRouter from "./people";
 import aiRouter from "./ai";
 import assetsRouter from "./assets";
+import onboardingRouter from "./onboarding";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use(settingsRouter);
 router.use(peopleRouter);
 router.use(aiRouter);
 router.use(assetsRouter);
+router.use(onboardingRouter);
 
 export default router;

@@ -227,12 +227,24 @@ export default function Budgets() {
         {isLoading ? (
           <div className="py-16 text-center text-muted-foreground">Loading budgets…</div>
         ) : rows.length === 0 ? (
-          <div className="py-16 flex flex-col items-center justify-center text-center">
-            <Target className="h-12 w-12 text-muted-foreground/30 mb-4" />
-            <p className="text-muted-foreground font-medium">No budgets set for {monthLabel}</p>
-            <p className="text-sm text-muted-foreground/70 mt-1">
-              Click "Set Budget" to create one — recurring budgets will appear here automatically.
-            </p>
+          <div className="py-16 flex flex-col items-center justify-center text-center gap-3">
+            <div className="h-14 w-14 rounded-full bg-muted/50 flex items-center justify-center">
+              <Target className="h-7 w-7 text-muted-foreground/30" />
+            </div>
+            <div>
+              <p className="text-muted-foreground font-medium">No budgets set for {monthLabel}</p>
+              <p className="text-sm text-muted-foreground/60 mt-1 max-w-sm mx-auto">
+                Set spending limits by category. Recurring budgets carry forward automatically each month.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 mt-1">
+              <Button size="sm" onClick={openCreate}>
+                <Plus className="mr-1.5 h-3.5 w-3.5" /> Set your first budget
+              </Button>
+              <a href="/categories" className="text-xs text-primary hover:underline">
+                Manage categories →
+              </a>
+            </div>
           </div>
         ) : (
           <div className="divide-y divide-border/30">

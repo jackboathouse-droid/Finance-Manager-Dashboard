@@ -153,13 +153,14 @@ function MetricCard({
   );
 }
 
-function ChartEmpty() {
+function ChartEmpty({ hint }: { hint?: string }) {
   return (
     <div className="h-[260px] flex flex-col items-center justify-center text-muted-foreground gap-2">
       <div className="h-12 w-12 rounded-full bg-muted/50 flex items-center justify-center">
         <Wallet className="h-6 w-6 opacity-30" />
       </div>
       <p className="text-sm font-medium">No data for selected filters</p>
+      {hint && <p className="text-xs text-muted-foreground/70 text-center max-w-[220px]">{hint}</p>}
     </div>
   );
 }
@@ -779,8 +780,25 @@ export default function Reports() {
                 Loading…
               </div>
             ) : filteredTx.length === 0 ? (
-              <div className="h-32 flex items-center justify-center text-sm text-muted-foreground">
-                No transactions match the current filters.
+              <div className="py-14 flex flex-col items-center justify-center gap-3 text-center">
+                <div className="h-12 w-12 rounded-full bg-muted/50 flex items-center justify-center">
+                  <Search className="h-5 w-5 text-muted-foreground/40" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    {txData.length === 0 ? "No transactions yet" : "No results match your filters"}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {txData.length === 0
+                      ? "Add transactions first to see reports and analytics here."
+                      : "Try adjusting the date range, category, or account filters."}
+                  </p>
+                </div>
+                {txData.length === 0 && (
+                  <a href="/transactions" className="text-xs text-primary hover:underline font-medium">
+                    Go to Transactions →
+                  </a>
+                )}
               </div>
             ) : (
               <div className="overflow-x-auto">

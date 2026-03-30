@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, CreditCard, Landmark, Edit2, Trash2 } from "lucide-react";
+import { Plus, CreditCard, Landmark, Edit2, Trash2, Wallet } from "lucide-react";
 import { AccountForm } from "@/components/forms/account-form";
 
 export default function Accounts() {
@@ -64,6 +64,19 @@ export default function Accounts() {
 
         {isLoading ? (
           <div className="sm:col-span-2 py-12 text-center text-muted-foreground">Loading accounts...</div>
+        ) : !accounts || accounts.length === 0 ? (
+          <div className="sm:col-span-2 lg:col-span-2 bg-card border border-dashed border-border/60 rounded-xl py-14 flex flex-col items-center justify-center gap-3 text-center">
+            <div className="h-14 w-14 rounded-full bg-muted/50 flex items-center justify-center">
+              <Wallet className="h-6 w-6 text-muted-foreground/40" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-foreground">No accounts yet</p>
+              <p className="text-xs text-muted-foreground mt-1">Add your first account to start tracking your finances.</p>
+            </div>
+            <Button size="sm" onClick={() => { setEditingAcc(null); setIsFormOpen(true); }}>
+              <Plus className="mr-1.5 h-3.5 w-3.5" /> Add your first account
+            </Button>
+          </div>
         ) : accounts?.map((acc) => (
           <Card key={acc.id} className="border-border/50 shadow-sm hover:shadow-md transition-all group flex flex-col bg-card">
             <CardHeader className="flex flex-row items-start justify-between pb-2">
