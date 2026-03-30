@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useQuery } from "@tanstack/react-query";
 import {
   useGetCategories,
   useCreateCategory,
@@ -80,24 +81,26 @@ function TypeBadge({ type }: { type: string }) {
   );
 }
 
-// ─── Confirm delete dialog ────────────────────────────────────────────────────
+// ─── Confirm delete dialog (with optional transaction count warning) ──────────
 
 function ConfirmDeleteDialog({
   open,
   label,
+  txCount,
   onConfirm,
   onCancel,
   isPending,
 }: {
   open: boolean;
   label: string;
+  txCount: number;
   onConfirm: () => void;
   onCancel: () => void;
   isPending: boolean;
 }) {
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onCancel()}>
-      <DialogContent className="sm:max-w-[380px]">
+      <DialogContent className="sm:max-w-[420px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-destructive" />
@@ -108,6 +111,17 @@ function ConfirmDeleteDialog({
             this item will lose their category assignment.
           </DialogDescription>
         </DialogHeader>
+
+        {txCount > 0 && (
+          <div className="flex items-start gap-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-3.5 py-3 text-sm text-amber-800 dark:text-amber-300">
+            <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+            <span>
+              <strong>{txCount} transaction{txCount !== 1 ? "s" : ""}</strong> are currently using this
+              category. They will lose their category assignment if you continue.
+            </span>
+          </div>
+        )}
+
         <div className="flex justify-end gap-3 pt-2">
           <Button variant="outline" onClick={onCancel} disabled={isPending}>
             Cancel
@@ -442,6 +456,25 @@ export default function Categories() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
+  // Transaction count maps for delete warnings
+  const { data: catTxCounts = {} as Record<number, number> } = useQuery<Record<number, number>>({
+    queryKey: ["/api/categories/transaction-counts"],
+    queryFn: async () => {
+      const res = await fetch("/api/categories/transaction-counts", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load");
+      return res.json();
+    },
+  });
+
+  const { data: subTxCounts = {} as Record<number, number> } = useQuery<Record<number, number>>({
+    queryKey: ["/api/subcategories/transaction-counts"],
+    queryFn: async () => {
+      const res = await fetch("/api/subcategories/transaction-counts", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load");
+      return res.json();
+    },
+  });
+
   // Category CRUD state
   const [catModalOpen, setCatModalOpen] = useState(false);
   const [editingCat, setEditingCat] = useState<Category | null>(null);
@@ -462,6 +495,7 @@ export default function Categories() {
     deleteCatMutation.mutate({ id: deletingCat.id }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ["/api/categories"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/categories/transaction-counts"] });
         queryClient.invalidateQueries({ queryKey: ["/api/subcategories"] });
         queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
         toast({ title: "Category deleted" });
@@ -479,6 +513,7 @@ export default function Categories() {
     deleteSubMutation.mutate({ id: deletingSub.id }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ["/api/subcategories"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/subcategories/transaction-counts"] });
         queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
         toast({ title: "Subcategory deleted" });
         setDeletingSub(null);
@@ -534,19 +569,20 @@ export default function Categories() {
                 <TableHead className="text-xs font-semibold uppercase tracking-wider">Name</TableHead>
                 <TableHead className="text-xs font-semibold uppercase tracking-wider w-[120px]">Type</TableHead>
                 <TableHead className="text-xs font-semibold uppercase tracking-wider w-[120px]">Subcategories</TableHead>
+                <TableHead className="text-xs font-semibold uppercase tracking-wider w-[80px] text-right">Transactions</TableHead>
                 <TableHead className="text-xs font-semibold uppercase tracking-wider w-[100px] text-center">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loadingCats ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-10 text-muted-foreground text-sm">
+                  <TableCell colSpan={5} className="text-center py-10 text-muted-foreground text-sm">
                     Loading…
                   </TableCell>
                 </TableRow>
               ) : categories.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-12">
+                  <TableCell colSpan={5} className="text-center py-12">
                     <div className="flex flex-col items-center gap-2">
                       <Tag className="h-8 w-8 text-muted-foreground/30" />
                       <p className="text-sm text-muted-foreground font-medium">No categories yet</p>
@@ -557,37 +593,48 @@ export default function Categories() {
                   </TableCell>
                 </TableRow>
               ) : (
-                categories.map((cat) => (
-                  <TableRow key={cat.id} className="group hover:bg-muted/20 transition-colors">
-                    <TableCell className="font-medium">{cat.name}</TableCell>
-                    <TableCell><TypeBadge type={cat.type} /></TableCell>
-                    <TableCell>
-                      <span className="text-sm text-muted-foreground">
-                        {subsByCategory[cat.id]?.length ?? 0}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center justify-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                          onClick={() => openEditCat(cat)}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                          onClick={() => setDeletingCat(cat)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
+                categories.map((cat) => {
+                  const txCount = catTxCounts[cat.id] ?? 0;
+                  return (
+                    <TableRow key={cat.id} className="group hover:bg-muted/20 transition-colors">
+                      <TableCell className="font-medium">{cat.name}</TableCell>
+                      <TableCell><TypeBadge type={cat.type} /></TableCell>
+                      <TableCell>
+                        <span className="text-sm text-muted-foreground">
+                          {subsByCategory[cat.id]?.length ?? 0}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span className={cn(
+                          "text-sm tabular-nums",
+                          txCount > 0 ? "text-foreground font-medium" : "text-muted-foreground"
+                        )}>
+                          {txCount}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center justify-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                            onClick={() => openEditCat(cat)}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                            onClick={() => setDeletingCat(cat)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
@@ -634,19 +681,20 @@ export default function Categories() {
                 <TableHead className="text-xs font-semibold uppercase tracking-wider">Name</TableHead>
                 <TableHead className="text-xs font-semibold uppercase tracking-wider">Parent Category</TableHead>
                 <TableHead className="text-xs font-semibold uppercase tracking-wider w-[120px]">Type</TableHead>
+                <TableHead className="text-xs font-semibold uppercase tracking-wider w-[80px] text-right">Transactions</TableHead>
                 <TableHead className="text-xs font-semibold uppercase tracking-wider w-[100px] text-center">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loadingSubs ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-10 text-muted-foreground text-sm">
+                  <TableCell colSpan={5} className="text-center py-10 text-muted-foreground text-sm">
                     Loading…
                   </TableCell>
                 </TableRow>
               ) : subcategories.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-12">
+                  <TableCell colSpan={5} className="text-center py-12">
                     <div className="flex flex-col items-center gap-2">
                       <Layers className="h-8 w-8 text-muted-foreground/30" />
                       <p className="text-sm text-muted-foreground font-medium">No subcategories yet</p>
@@ -668,6 +716,7 @@ export default function Categories() {
                   })
                   .map((sub) => {
                     const parent = categories.find((c) => c.id === sub.category_id);
+                    const txCount = subTxCounts[sub.id] ?? 0;
                     return (
                       <TableRow key={sub.id} className="group hover:bg-muted/20 transition-colors">
                         <TableCell className="font-medium">{sub.name}</TableCell>
@@ -682,6 +731,14 @@ export default function Categories() {
                           )}
                         </TableCell>
                         <TableCell><TypeBadge type={sub.type} /></TableCell>
+                        <TableCell className="text-right">
+                          <span className={cn(
+                            "text-sm tabular-nums",
+                            txCount > 0 ? "text-foreground font-medium" : "text-muted-foreground"
+                          )}>
+                            {txCount}
+                          </span>
+                        </TableCell>
                         <TableCell>
                           <div className="flex items-center justify-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                             <Button
@@ -731,6 +788,7 @@ export default function Categories() {
       <ConfirmDeleteDialog
         open={!!deletingCat}
         label={deletingCat?.name ?? ""}
+        txCount={deletingCat ? (catTxCounts[deletingCat.id] ?? 0) : 0}
         onConfirm={confirmDeleteCat}
         onCancel={() => setDeletingCat(null)}
         isPending={deleteCatMutation.isPending}
@@ -739,6 +797,7 @@ export default function Categories() {
       <ConfirmDeleteDialog
         open={!!deletingSub}
         label={deletingSub?.name ?? ""}
+        txCount={deletingSub ? (subTxCounts[deletingSub.id] ?? 0) : 0}
         onConfirm={confirmDeleteSub}
         onCancel={() => setDeletingSub(null)}
         isPending={deleteSubMutation.isPending}

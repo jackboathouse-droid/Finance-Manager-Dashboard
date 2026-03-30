@@ -19,6 +19,7 @@ import { sql } from "drizzle-orm";
 import passport from "../lib/google-auth";
 import { googleOAuthEnabled, getFrontendBase } from "../lib/google-auth";
 import { sendMail, buildWelcomeEmail, buildPasswordResetEmail } from "../lib/mailer";
+import { seedUserCategories } from "../seed";
 
 const router: IRouter = Router();
 
@@ -127,6 +128,11 @@ router.post("/auth/register", async (req, res) => {
         role: "user",
       })
       .returning();
+
+    // Seed default categories for this new user (non-blocking — don't fail registration)
+    seedUserCategories(newUser.id).catch((err) =>
+      req.log.error({ err }, "seedUserCategories failed for new email user")
+    );
 
     setUserSession(req, newUser);
     req.log.info({ userId: newUser.id, email: newUser.email }, "New user registered");

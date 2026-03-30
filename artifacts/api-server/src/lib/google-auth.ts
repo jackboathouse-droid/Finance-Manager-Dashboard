@@ -3,6 +3,7 @@ import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { db } from "@workspace/db";
 import { usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { seedUserCategories } from "../seed";
 
 const GOOGLE_CLIENT_ID = process.env["GOOGLE_CLIENT_ID"] ?? "";
 const GOOGLE_CLIENT_SECRET = process.env["GOOGLE_CLIENT_SECRET"] ?? "";
@@ -97,6 +98,9 @@ if (googleOAuthEnabled) {
               profile_picture_url: pictureUrl,
             })
             .returning();
+
+          // Seed default categories for new Google user (fire-and-forget)
+          seedUserCategories(newUser.id).catch(() => {});
 
           return done(null, newUser);
         } catch (err) {

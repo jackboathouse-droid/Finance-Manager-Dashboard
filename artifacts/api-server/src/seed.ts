@@ -95,6 +95,32 @@ const DEFAULT_CATEGORIES: CategorySeed[] = [
 ];
 
 /**
+ * Seeds the default categories and subcategories for a specific user.
+ * Called on new user registration (email + Google OAuth).
+ */
+export async function seedUserCategories(userId: number): Promise<void> {
+  for (const cat of DEFAULT_CATEGORIES) {
+    const [inserted] = await db
+      .insert(categoriesTable)
+      .values({ name: cat.name, type: cat.type, user_id: userId })
+      .returning();
+
+    if (inserted && cat.subcategories.length > 0) {
+      await db.insert(subcategoriesTable).values(
+        cat.subcategories.map((name) => ({
+          name,
+          category_id: inserted.id,
+          type: cat.type,
+          user_id: userId,
+        }))
+      );
+    }
+  }
+
+  console.log(`[seed] Inserted default categories for userId=${userId}`);
+}
+
+/**
  * Ensures the session table exists in PostgreSQL.
  * Required by connect-pg-simple. Safe to run on every startup.
  */
@@ -112,31 +138,14 @@ export async function ensureSessionTable() {
   `);
 }
 
+/**
+ * @deprecated Use seedUserCategories(userId) for per-user category seeding.
+ * This function is retained only for backward compatibility on startup
+ * (ensures the admin user gets categories if they were somehow missed).
+ */
 export async function seedDefaultCategories() {
-  const existing = await db.select().from(categoriesTable).limit(1);
-
-  if (existing.length > 0) {
-    return;
-  }
-
-  for (const cat of DEFAULT_CATEGORIES) {
-    const [inserted] = await db
-      .insert(categoriesTable)
-      .values({ name: cat.name, type: cat.type })
-      .returning();
-
-    if (inserted && cat.subcategories.length > 0) {
-      await db.insert(subcategoriesTable).values(
-        cat.subcategories.map((name) => ({
-          name,
-          category_id: inserted.id,
-          type: cat.type,
-        }))
-      );
-    }
-  }
-
-  console.log("[seed] Inserted default categories and subcategories.");
+  // No-op: categories are now per-user, seeded at registration time.
+  // The admin user's categories were backfilled via SQL migration.
 }
 
 /**
@@ -172,13 +181,16 @@ export async function ensureAdminUser() {
 
   const password_hash = await bcrypt.hash(ADMIN_PASSWORD, 12);
 
-  await db.insert(usersTable).values({
+  const [newAdmin] = await db.insert(usersTable).values({
     full_name: "Admin",
     email: ADMIN_EMAIL,
     password_hash,
     auth_provider: "email",
     role: "admin",
-  });
+  }).returning();
 
   console.log(`[seed] Admin user created: ${ADMIN_EMAIL}`);
+
+  // Seed default categories for the new admin user
+  await seedUserCategories(newAdmin.id);
 }
