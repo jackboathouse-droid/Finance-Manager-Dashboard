@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { subcategoriesTable, transactionsTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
+import { categoryBelongsToUser } from "../lib/validate-ownership";
 
 const router: IRouter = Router();
 
@@ -73,6 +74,12 @@ router.post("/subcategories", async (req, res) => {
       category_id: number;
       type: string;
     };
+
+    // Ensure parent category belongs to this user
+    if (!(await categoryBelongsToUser(category_id, userId))) {
+      return res.status(403).json({ error: "Invalid parent category." });
+    }
+
     const [subcategory] = await db
       .insert(subcategoriesTable)
       .values({ name, category_id, type, user_id: userId })
@@ -95,6 +102,12 @@ router.put("/subcategories/:id", async (req, res) => {
       category_id: number;
       type: string;
     };
+
+    // Ensure parent category belongs to this user
+    if (!(await categoryBelongsToUser(category_id, userId))) {
+      return res.status(403).json({ error: "Invalid parent category." });
+    }
+
     const [subcategory] = await db
       .update(subcategoriesTable)
       .set({ name, category_id, type })

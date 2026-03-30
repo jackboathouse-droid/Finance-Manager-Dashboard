@@ -36,17 +36,18 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Plus, Pencil, Trash2, Tag, Layers, AlertTriangle } from "lucide-react";
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  Tag,
+  ChevronDown,
+  ChevronRight,
+  AlertTriangle,
+  Layers,
+} from "lucide-react";
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -107,8 +108,7 @@ function ConfirmDeleteDialog({
             Confirm deletion
           </DialogTitle>
           <DialogDescription className="pt-1">
-            Delete <strong>"{label}"</strong>? This cannot be undone. Any transactions linked to
-            this item will lose their category assignment.
+            Delete <strong>"{label}"</strong>? This cannot be undone.
           </DialogDescription>
         </DialogHeader>
 
@@ -116,8 +116,8 @@ function ConfirmDeleteDialog({
           <div className="flex items-start gap-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-3.5 py-3 text-sm text-amber-800 dark:text-amber-300">
             <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
             <span>
-              <strong>{txCount} transaction{txCount !== 1 ? "s" : ""}</strong> are currently using this
-              category. They will lose their category assignment if you continue.
+              <strong>{txCount} transaction{txCount !== 1 ? "s" : ""}</strong> are currently using
+              this category. They will lose their category assignment if you continue.
             </span>
           </div>
         )}
@@ -168,7 +168,6 @@ function CategoryModal({
     defaultValues: { name: editing?.name ?? "", type: (editing?.type as "income" | "expense") ?? "expense" },
   });
 
-  // Reset form when modal opens/closes or editing target changes
   useState(() => {
     form.reset({ name: editing?.name ?? "", type: (editing?.type as "income" | "expense") ?? "expense" });
   });
@@ -253,9 +252,6 @@ function CategoryModal({
                 </button>
               ))}
             </div>
-            {form.formState.errors.type && (
-              <p className="text-xs text-destructive">{form.formState.errors.type.message}</p>
-            )}
           </div>
 
           <div className="flex justify-end gap-3 pt-2 border-t border-border/50">
@@ -278,12 +274,14 @@ function SubcategoryModal({
   open,
   editing,
   categories,
+  defaultCategoryId,
   existingNames,
   onClose,
 }: {
   open: boolean;
   editing: Subcategory | null;
   categories: Category[];
+  defaultCategoryId?: number;
   existingNames: string[];
   onClose: () => void;
 }) {
@@ -306,7 +304,7 @@ function SubcategoryModal({
     ),
     defaultValues: {
       name: editing?.name ?? "",
-      category_id: editing?.category_id ?? 0,
+      category_id: editing?.category_id ?? defaultCategoryId ?? 0,
       type: (editing?.type as "income" | "expense") ?? "expense",
     },
   });
@@ -318,7 +316,6 @@ function SubcategoryModal({
 
   const selectedCategoryId = form.watch("category_id");
 
-  // Auto-fill type from parent category when category changes
   const onCategoryChange = (val: string) => {
     const id = parseInt(val);
     form.setValue("category_id", id);
@@ -475,6 +472,15 @@ export default function Categories() {
     },
   });
 
+  // Expanded rows (category IDs that show their subcategories)
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const toggleExpand = (id: number) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
   // Category CRUD state
   const [catModalOpen, setCatModalOpen] = useState(false);
   const [editingCat, setEditingCat] = useState<Category | null>(null);
@@ -484,6 +490,7 @@ export default function Categories() {
   // Subcategory CRUD state
   const [subModalOpen, setSubModalOpen] = useState(false);
   const [editingSub, setEditingSub] = useState<Subcategory | null>(null);
+  const [defaultSubCatId, setDefaultSubCatId] = useState<number | undefined>(undefined);
   const [deletingSub, setDeletingSub] = useState<Subcategory | null>(null);
   const deleteSubMutation = useDeleteSubcategory();
 
@@ -506,8 +513,12 @@ export default function Categories() {
   };
 
   // Subcategory actions
-  const openAddSub = () => { setEditingSub(null); setSubModalOpen(true); };
-  const openEditSub = (sub: Subcategory) => { setEditingSub(sub); setSubModalOpen(true); };
+  const openAddSub = (categoryId?: number) => {
+    setEditingSub(null);
+    setDefaultSubCatId(categoryId);
+    setSubModalOpen(true);
+  };
+  const openEditSub = (sub: Subcategory) => { setEditingSub(sub); setDefaultSubCatId(undefined); setSubModalOpen(true); };
   const confirmDeleteSub = () => {
     if (!deletingSub) return;
     deleteSubMutation.mutate({ id: deletingSub.id }, {
@@ -525,248 +536,201 @@ export default function Categories() {
   const categoryNames = categories.map((c) => c.name);
   const subcategoryNames = subcategories.map((s) => s.name);
 
-  // Group subcategories by parent category for display
+  // Group subcategories by parent category
   const subsByCategory = subcategories.reduce<Record<number, Subcategory[]>>((acc, sub) => {
     if (!acc[sub.category_id]) acc[sub.category_id] = [];
     acc[sub.category_id].push(sub);
     return acc;
   }, {});
 
-  return (
-    <div className="space-y-8 pb-8">
-      {/* Page header */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Categories</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Manage how your transactions are organized and reported.
-        </p>
-      </div>
+  const isLoading = loadingCats || loadingSubs;
 
-      {/* ── Section 1: Categories ─────────────────────────────────────── */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Tag className="h-4 w-4 text-primary" />
-            </div>
-            <div>
-              <h2 className="text-base font-semibold leading-tight">Categories</h2>
-              <p className="text-xs text-muted-foreground">
-                {categories.length} {categories.length === 1 ? "category" : "categories"}
-              </p>
-            </div>
-          </div>
+  return (
+    <div className="space-y-6 pb-8">
+      {/* Page header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Categories</h1>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Manage how your transactions are organized and reported.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => openAddSub()} className="h-8 gap-1.5" disabled={categories.length === 0}>
+            <Layers className="h-3.5 w-3.5" />
+            Add Subcategory
+          </Button>
           <Button size="sm" onClick={openAddCat} className="h-8 gap-1.5">
             <Plus className="h-3.5 w-3.5" />
             Add Category
           </Button>
         </div>
+      </div>
 
-        <div className="bg-card border border-border/50 rounded-xl shadow-sm overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/40 hover:bg-muted/40">
-                <TableHead className="text-xs font-semibold uppercase tracking-wider">Name</TableHead>
-                <TableHead className="text-xs font-semibold uppercase tracking-wider w-[120px]">Type</TableHead>
-                <TableHead className="text-xs font-semibold uppercase tracking-wider w-[120px]">Subcategories</TableHead>
-                <TableHead className="text-xs font-semibold uppercase tracking-wider w-[80px] text-right">Transactions</TableHead>
-                <TableHead className="text-xs font-semibold uppercase tracking-wider w-[100px] text-center">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loadingCats ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center py-10 text-muted-foreground text-sm">
-                    Loading…
-                  </TableCell>
-                </TableRow>
-              ) : categories.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center py-12">
-                    <div className="flex flex-col items-center gap-2">
-                      <Tag className="h-8 w-8 text-muted-foreground/30" />
-                      <p className="text-sm text-muted-foreground font-medium">No categories yet</p>
-                      <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={openAddCat}>
-                        Add your first category
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                categories.map((cat) => {
-                  const txCount = catTxCounts[cat.id] ?? 0;
-                  return (
-                    <TableRow key={cat.id} className="group hover:bg-muted/20 transition-colors">
-                      <TableCell className="font-medium">{cat.name}</TableCell>
-                      <TableCell><TypeBadge type={cat.type} /></TableCell>
-                      <TableCell>
-                        <span className="text-sm text-muted-foreground">
-                          {subsByCategory[cat.id]?.length ?? 0}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right">
+      {/* Hierarchical category tree */}
+      <div className="bg-card border border-border/50 rounded-xl shadow-sm overflow-hidden">
+        {/* Table header */}
+        <div className="grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-3 px-4 py-2.5 bg-muted/40 border-b border-border/40">
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Name</span>
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground w-[90px]">Type</span>
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground w-[80px] text-right">Transactions</span>
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground w-[80px] text-center">Actions</span>
+        </div>
+
+        {isLoading ? (
+          <div className="py-14 text-center text-sm text-muted-foreground">Loading…</div>
+        ) : categories.length === 0 ? (
+          <div className="py-14 text-center flex flex-col items-center gap-3">
+            <Tag className="h-10 w-10 text-muted-foreground/20" />
+            <p className="text-sm font-medium text-muted-foreground">No categories yet</p>
+            <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={openAddCat}>
+              Add your first category
+            </Button>
+          </div>
+        ) : (
+          <div className="divide-y divide-border/40">
+            {[...categories]
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map((cat) => {
+                const subs = (subsByCategory[cat.id] ?? []).sort((a, b) => a.name.localeCompare(b.name));
+                const hasSubs = subs.length > 0;
+                const isOpen = expanded.has(cat.id);
+                const txCount = catTxCounts[cat.id] ?? 0;
+
+                return (
+                  <div key={cat.id}>
+                    {/* Category row */}
+                    <div className="group grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-3 px-4 py-3 hover:bg-muted/20 transition-colors">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {/* Expand/collapse toggle */}
+                        <button
+                          type="button"
+                          onClick={() => hasSubs && toggleExpand(cat.id)}
+                          className={cn(
+                            "h-5 w-5 rounded flex items-center justify-center flex-shrink-0 transition-colors",
+                            hasSubs
+                              ? "text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
+                              : "text-muted-foreground/20 cursor-default"
+                          )}
+                          title={hasSubs ? (isOpen ? "Collapse" : "Expand subcategories") : undefined}
+                        >
+                          {hasSubs ? (
+                            isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />
+                          ) : (
+                            <span className="h-3.5 w-3.5 flex items-center justify-center">
+                              <span className="h-1 w-1 rounded-full bg-current opacity-30" />
+                            </span>
+                          )}
+                        </button>
+                        <span className="font-medium truncate">{cat.name}</span>
+                        {hasSubs && (
+                          <span className="text-xs text-muted-foreground ml-1 flex-shrink-0">
+                            ({subs.length})
+                          </span>
+                        )}
+                      </div>
+                      <div className="w-[90px]"><TypeBadge type={cat.type} /></div>
+                      <div className="w-[80px] text-right">
                         <span className={cn(
                           "text-sm tabular-nums",
-                          txCount > 0 ? "text-foreground font-medium" : "text-muted-foreground"
-                        )}>
-                          {txCount}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center justify-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                            onClick={() => openEditCat(cat)}
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                            onClick={() => setDeletingCat(cat)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </section>
+                          txCount > 0 ? "font-medium" : "text-muted-foreground"
+                        )}>{txCount}</span>
+                      </div>
+                      <div className="w-[80px] flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button
+                          variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                          onClick={() => openEditCat(cat)}
+                          title="Edit category"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => setDeletingCat(cat)}
+                          title="Delete category"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary"
+                          onClick={() => { if (!expanded.has(cat.id)) toggleExpand(cat.id); openAddSub(cat.id); }}
+                          title="Add subcategory"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
 
-      {/* ── Section 2: Subcategories ──────────────────────────────────── */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Layers className="h-4 w-4 text-primary" />
-            </div>
-            <div>
-              <h2 className="text-base font-semibold leading-tight">Subcategories</h2>
-              <p className="text-xs text-muted-foreground">
-                {subcategories.length} {subcategories.length === 1 ? "subcategory" : "subcategories"}
-              </p>
-            </div>
-          </div>
-          <Button
-            size="sm"
-            onClick={openAddSub}
-            className="h-8 gap-1.5"
-            disabled={categories.length === 0}
-            title={categories.length === 0 ? "Add a category first" : undefined}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Add Subcategory
-          </Button>
-        </div>
+                    {/* Subcategory rows (expanded) */}
+                    {isOpen && subs.length > 0 && (
+                      <div className="bg-muted/10 border-t border-border/30">
+                        {subs.map((sub) => {
+                          const subTxCount = subTxCounts[sub.id] ?? 0;
+                          return (
+                            <div
+                              key={sub.id}
+                              className="group grid grid-cols-[1fr_auto_auto_auto_auto] items-center gap-3 pl-12 pr-4 py-2.5 hover:bg-muted/20 transition-colors border-b border-border/20 last:border-0"
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Layers className="h-3 w-3 text-muted-foreground/50 flex-shrink-0" />
+                                <span className="text-sm truncate">{sub.name}</span>
+                              </div>
+                              <div className="w-[90px]"><TypeBadge type={sub.type} /></div>
+                              <div className="w-[80px] text-right">
+                                <span className={cn(
+                                  "text-sm tabular-nums",
+                                  subTxCount > 0 ? "font-medium" : "text-muted-foreground"
+                                )}>{subTxCount}</span>
+                              </div>
+                              <div className="w-[80px] flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Button
+                                  variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                                  onClick={() => openEditSub(sub)}
+                                  title="Edit subcategory"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                  onClick={() => setDeletingSub(sub)}
+                                  title="Delete subcategory"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
 
-        {categories.length === 0 && !loadingCats && (
-          <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg px-4 py-3 flex items-center gap-3 text-sm text-amber-800 dark:text-amber-300">
-            <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-            <span>Create at least one category before adding subcategories.</span>
+                    {/* Expanded but empty message */}
+                    {isOpen && subs.length === 0 && (
+                      <div className="bg-muted/10 border-t border-border/30 pl-12 pr-4 py-3 flex items-center gap-2 text-xs text-muted-foreground">
+                        <span>No subcategories.</span>
+                        <button
+                          type="button"
+                          className="text-primary hover:underline"
+                          onClick={() => openAddSub(cat.id)}
+                        >
+                          Add one
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
           </div>
         )}
+      </div>
 
-        <div className="bg-card border border-border/50 rounded-xl shadow-sm overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/40 hover:bg-muted/40">
-                <TableHead className="text-xs font-semibold uppercase tracking-wider">Name</TableHead>
-                <TableHead className="text-xs font-semibold uppercase tracking-wider">Parent Category</TableHead>
-                <TableHead className="text-xs font-semibold uppercase tracking-wider w-[120px]">Type</TableHead>
-                <TableHead className="text-xs font-semibold uppercase tracking-wider w-[80px] text-right">Transactions</TableHead>
-                <TableHead className="text-xs font-semibold uppercase tracking-wider w-[100px] text-center">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loadingSubs ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center py-10 text-muted-foreground text-sm">
-                    Loading…
-                  </TableCell>
-                </TableRow>
-              ) : subcategories.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center py-12">
-                    <div className="flex flex-col items-center gap-2">
-                      <Layers className="h-8 w-8 text-muted-foreground/30" />
-                      <p className="text-sm text-muted-foreground font-medium">No subcategories yet</p>
-                      {categories.length > 0 && (
-                        <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={openAddSub}>
-                          Add your first subcategory
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                // Sort by parent category name for readability
-                [...subcategories]
-                  .sort((a, b) => {
-                    const catA = categories.find((c) => c.id === a.category_id)?.name ?? "";
-                    const catB = categories.find((c) => c.id === b.category_id)?.name ?? "";
-                    return catA.localeCompare(catB) || a.name.localeCompare(b.name);
-                  })
-                  .map((sub) => {
-                    const parent = categories.find((c) => c.id === sub.category_id);
-                    const txCount = subTxCounts[sub.id] ?? 0;
-                    return (
-                      <TableRow key={sub.id} className="group hover:bg-muted/20 transition-colors">
-                        <TableCell className="font-medium">{sub.name}</TableCell>
-                        <TableCell>
-                          {parent ? (
-                            <span className="inline-flex items-center gap-1.5 text-sm">
-                              <Tag className="h-3 w-3 text-muted-foreground" />
-                              {parent.name}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-muted-foreground italic">Unknown</span>
-                          )}
-                        </TableCell>
-                        <TableCell><TypeBadge type={sub.type} /></TableCell>
-                        <TableCell className="text-right">
-                          <span className={cn(
-                            "text-sm tabular-nums",
-                            txCount > 0 ? "text-foreground font-medium" : "text-muted-foreground"
-                          )}>
-                            {txCount}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center justify-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                              onClick={() => openEditSub(sub)}
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                              onClick={() => setDeletingSub(sub)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </section>
+      {/* Summary */}
+      {!isLoading && categories.length > 0 && (
+        <p className="text-xs text-muted-foreground text-right">
+          {categories.length} {categories.length === 1 ? "category" : "categories"} ·{" "}
+          {subcategories.length} {subcategories.length === 1 ? "subcategory" : "subcategories"}
+        </p>
+      )}
 
       {/* ── Modals ─────────────────────────────────────────────────────── */}
 
@@ -781,8 +745,9 @@ export default function Categories() {
         open={subModalOpen}
         editing={editingSub}
         categories={categories}
+        defaultCategoryId={defaultSubCatId}
         existingNames={subcategoryNames}
-        onClose={() => { setSubModalOpen(false); setEditingSub(null); }}
+        onClose={() => { setSubModalOpen(false); setEditingSub(null); setDefaultSubCatId(undefined); }}
       />
 
       <ConfirmDeleteDialog

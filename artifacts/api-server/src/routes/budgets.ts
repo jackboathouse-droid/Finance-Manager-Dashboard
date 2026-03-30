@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { budgetsTable, categoriesTable, subcategoriesTable, transactionsTable } from "@workspace/db";
 import { eq, and, sql, lt } from "drizzle-orm";
+import { categoryBelongsToUser, subcategoryBelongsToUser } from "../lib/validate-ownership";
 
 const router: IRouter = Router();
 
@@ -233,6 +234,14 @@ router.post("/budgets", async (req, res) => {
       is_recurring?: boolean;
     };
 
+    // Validate category/subcategory ownership
+    if (!(await categoryBelongsToUser(body.category_id, userId))) {
+      return res.status(403).json({ error: "Invalid category." });
+    }
+    if (!(await subcategoryBelongsToUser(body.subcategory_id, userId))) {
+      return res.status(403).json({ error: "Invalid subcategory." });
+    }
+
     const [budget] = await db
       .insert(budgetsTable)
       .values({
@@ -274,6 +283,14 @@ router.put("/budgets/:id", async (req, res) => {
       budget_amount: number;
       is_recurring?: boolean;
     };
+
+    // Validate category/subcategory ownership
+    if (!(await categoryBelongsToUser(body.category_id, userId))) {
+      return res.status(403).json({ error: "Invalid category." });
+    }
+    if (!(await subcategoryBelongsToUser(body.subcategory_id, userId))) {
+      return res.status(403).json({ error: "Invalid subcategory." });
+    }
 
     await db
       .update(budgetsTable)

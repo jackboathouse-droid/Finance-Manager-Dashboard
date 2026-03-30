@@ -7,6 +7,7 @@ import {
   subcategoriesTable,
 } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
+import { categoryBelongsToUser, subcategoryBelongsToUser } from "../lib/validate-ownership";
 
 const router: IRouter = Router();
 
@@ -101,6 +102,14 @@ router.post("/transactions", async (req, res) => {
       person: string;
       type: string;
     };
+
+    // Validate category/subcategory ownership
+    if (!(await categoryBelongsToUser(body.category_id, userId))) {
+      return res.status(403).json({ error: "Invalid category." });
+    }
+    if (!(await subcategoryBelongsToUser(body.subcategory_id, userId))) {
+      return res.status(403).json({ error: "Invalid subcategory." });
+    }
 
     const [tx] = await db
       .insert(transactionsTable)
@@ -216,6 +225,14 @@ router.put("/transactions/:id", async (req, res) => {
       person: string;
       type: string;
     };
+
+    // Validate category/subcategory ownership
+    if (!(await categoryBelongsToUser(body.category_id, userId))) {
+      return res.status(403).json({ error: "Invalid category." });
+    }
+    if (!(await subcategoryBelongsToUser(body.subcategory_id, userId))) {
+      return res.status(403).json({ error: "Invalid subcategory." });
+    }
 
     await db
       .update(transactionsTable)
