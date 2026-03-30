@@ -15,7 +15,7 @@ import {
 import { BubbleLogo } from "@/components/bubble-logo";
 
 const navItems = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Transactions", url: "/transactions", icon: ReceiptText },
   { title: "Accounts", url: "/accounts", icon: Landmark },
   { title: "Assets & Liabilities", url: "/assets", icon: Scale },

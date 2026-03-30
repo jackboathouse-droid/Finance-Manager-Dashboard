@@ -365,7 +365,7 @@ router.get("/auth/google/callback", (req: Request, res: Response, next: NextFunc
           return res.redirect(`${frontendBase}/login?error=session_error`);
         }
         req.log.info({ userId: user.id, email: user.email }, "Google OAuth login");
-        return res.redirect(`${frontendBase}/`);
+        return res.redirect(`${frontendBase}/dashboard`);
       });
     }
   )(req, res, next);

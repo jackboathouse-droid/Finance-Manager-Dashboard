@@ -217,7 +217,7 @@ export default function Login() {
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-          setLocation("/");
+          setLocation("/dashboard");
         },
         onError: (err: any) => {
           const message =

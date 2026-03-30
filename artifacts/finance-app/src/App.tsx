@@ -8,6 +8,7 @@ import { SettingsProvider } from "./lib/settings-context";
 import { Layout } from "./components/layout";
 
 // Pages
+import Landing from "./pages/landing";
 import Login from "./pages/login";
 import Signup from "./pages/signup";
 import ResetPassword from "./pages/reset-password";
@@ -51,19 +52,24 @@ function Router() {
 
   return (
     <Switch>
+      {/* Root: landing page for visitors, dashboard for authenticated users */}
+      <Route path="/">
+        {isAuthenticated ? <Redirect to="/dashboard" /> : <Landing />}
+      </Route>
+
       <Route path="/login">
-        {isAuthenticated ? <Redirect to="/" /> : <Login />}
+        {isAuthenticated ? <Redirect to="/dashboard" /> : <Login />}
       </Route>
 
       <Route path="/signup">
-        {isAuthenticated ? <Redirect to="/" /> : <Signup />}
+        {isAuthenticated ? <Redirect to="/dashboard" /> : <Signup />}
       </Route>
 
       <Route path="/reset-password">
-        {isAuthenticated ? <Redirect to="/" /> : <ResetPassword />}
+        {isAuthenticated ? <Redirect to="/dashboard" /> : <ResetPassword />}
       </Route>
 
-      <Route path="/" component={() => <ProtectedRoute component={Dashboard} />} />
+      <Route path="/dashboard" component={() => <ProtectedRoute component={Dashboard} />} />
       <Route path="/transactions" component={() => <ProtectedRoute component={Transactions} />} />
       <Route path="/accounts" component={() => <ProtectedRoute component={Accounts} />} />
       <Route path="/budget" component={() => <ProtectedRoute component={Budget} />} />
