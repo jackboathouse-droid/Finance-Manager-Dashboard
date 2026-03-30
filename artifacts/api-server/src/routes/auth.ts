@@ -14,10 +14,10 @@ const router: IRouter = Router();
 const SALT_ROUNDS = 12;
 const RESET_TOKEN_TTL_MINUTES = 60;
 
-/** Read from env; 0 means no cap. Defaults to 5 if unset. */
+/** Read from env; 0 means no cap. Defaults to 0 (no cap) if unset. */
 function getMaxUsers(): number {
-  const val = parseInt(process.env.MAX_USERS ?? "5");
-  return isNaN(val) ? 5 : val;
+  const val = parseInt(process.env.MAX_USERS ?? "0");
+  return isNaN(val) ? 0 : val;
 }
 
 declare module "express-session" {
@@ -49,10 +49,9 @@ function setUserSession(
   }
 }
 
-/** Normalize login identifier: "admin" → "admin@bubble.app" */
+/** Normalize login identifier to lowercase email */
 function normalizeLoginId(raw: string): string {
-  const trimmed = raw.trim().toLowerCase();
-  return trimmed === "admin" ? "admin@bubble.app" : trimmed;
+  return raw.trim().toLowerCase();
 }
 
 /** Build a nodemailer transporter from env vars (returns null if unconfigured) */

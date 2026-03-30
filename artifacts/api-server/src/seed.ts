@@ -141,11 +141,25 @@ export async function seedDefaultCategories() {
 
 /**
  * Ensures the admin account exists in the database.
- * Creates it on first run; safely skips if already present.
+ * Credentials are read from ADMIN_EMAIL / ADMIN_PASSWORD env vars.
+ * Defaults to admin@bubble.app / admin only in non-production environments.
  */
 export async function ensureAdminUser() {
-  const ADMIN_EMAIL = "admin@bubble.app";
-  const ADMIN_PASSWORD = "admin";
+  const isProduction = process.env["NODE_ENV"] === "production";
+
+  const ADMIN_EMAIL =
+    process.env["ADMIN_EMAIL"] ??
+    (isProduction ? undefined : "admin@bubble.app");
+  const ADMIN_PASSWORD =
+    process.env["ADMIN_PASSWORD"] ??
+    (isProduction ? undefined : "admin");
+
+  if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+    console.warn(
+      "[seed] ADMIN_EMAIL or ADMIN_PASSWORD not set — skipping admin user creation."
+    );
+    return;
+  }
 
   const [existing] = await db
     .select({ id: usersTable.id })
@@ -166,5 +180,5 @@ export async function ensureAdminUser() {
     role: "admin",
   });
 
-  console.log("[seed] Admin user created: admin@bubble.app / admin");
+  console.log(`[seed] Admin user created: ${ADMIN_EMAIL}`);
 }
