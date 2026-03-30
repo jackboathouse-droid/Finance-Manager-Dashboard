@@ -412,7 +412,11 @@ async function maybeSendWeeklyDigest(
 
     if (!settings?.weekly_summary) return;
 
-    // Throttle: only send if >6 days since last digest
+    // Gate: only send on Mondays (day 1) so digest covers last week
+    const now = new Date();
+    if (now.getDay() !== 1) return;
+
+    // Throttle: skip if already sent within the last 6 days (prevents double-send)
     if (settings.last_weekly_digest_sent) {
       const daysSince =
         (Date.now() - new Date(settings.last_weekly_digest_sent).getTime()) / 86_400_000;
@@ -420,7 +424,6 @@ async function maybeSendWeeklyDigest(
     }
 
     // Previous week: Mon–Sun
-    const now = new Date();
     const dayOfWeek = now.getDay(); // 0=Sun
     const daysSinceMonday = (dayOfWeek + 6) % 7; // days since last Mon
     const lastMonday = new Date(now);

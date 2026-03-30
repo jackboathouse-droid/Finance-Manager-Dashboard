@@ -16,10 +16,9 @@ import {
 } from "@workspace/db";
 import { eq, count, inArray } from "drizzle-orm";
 import { sql } from "drizzle-orm";
-import * as nodemailer from "nodemailer";
 import passport from "../lib/google-auth";
 import { googleOAuthEnabled, getFrontendBase } from "../lib/google-auth";
-import { sendMail, buildWelcomeEmail } from "../lib/mailer";
+import { sendMail, buildWelcomeEmail, buildPasswordResetEmail } from "../lib/mailer";
 
 const router: IRouter = Router();
 
@@ -64,21 +63,6 @@ function setUserSession(
 /** Normalize login identifier to lowercase email */
 function normalizeLoginId(raw: string): string {
   return raw.trim().toLowerCase();
-}
-
-/** Build a nodemailer transporter from env vars (returns null if unconfigured) */
-function buildMailTransporter(): nodemailer.Transporter | null {
-  const host = process.env.SMTP_HOST;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  if (!host || !user || !pass) return null;
-
-  return nodemailer.createTransport({
-    host,
-    port: parseInt(process.env.SMTP_PORT || "587"),
-    secure: process.env.SMTP_SECURE === "true",
-    auth: { user, pass },
-  });
 }
 
 // ── Register (email + password) ───────────────────────────────────────────────
@@ -257,36 +241,16 @@ router.post("/auth/forgot-password", async (req, res) => {
 
     req.log.info({ userId: user.id, resetUrl }, "Password reset token created");
 
-    // Try to send email
-    const transporter = buildMailTransporter();
-    if (transporter) {
-      const fromAddr = process.env.SMTP_FROM || process.env.SMTP_USER;
-      await transporter.sendMail({
-        from: `"Bubble Finance" <${fromAddr}>`,
-        to: user.email,
-        subject: "Reset your Bubble password",
-        html: `
-          <div style="font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px;">
-            <h2 style="color: #1C3A5E; margin-bottom: 8px;">Reset your password</h2>
-            <p style="color: #64748b;">Hi ${user.full_name},</p>
-            <p style="color: #64748b;">We received a request to reset the password for your Bubble account. Click the button below to choose a new password. This link expires in ${RESET_TOKEN_TTL_MINUTES} minutes.</p>
-            <a href="${resetUrl}" style="display: inline-block; margin: 24px 0; padding: 12px 28px; background: #4FC3F7; color: #fff; border-radius: 8px; text-decoration: none; font-weight: 600;">Reset password</a>
-            <p style="color: #94a3b8; font-size: 13px;">If you didn't request this, you can safely ignore this email — your password won't change.</p>
-            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
-            <p style="color: #94a3b8; font-size: 12px;">Bubble Finance · Your personal finance companion</p>
-          </div>
-        `,
-        text: `Reset your Bubble password\n\nHi ${user.full_name},\n\nClick the link below to reset your password (expires in ${RESET_TOKEN_TTL_MINUTES} min):\n\n${resetUrl}\n\nIf you didn't request this, ignore this email.`,
-      });
-      return res.json({ message: GENERIC_MSG });
+    const resetEmail = buildPasswordResetEmail(user.full_name, resetUrl, RESET_TOKEN_TTL_MINUTES);
+    const sent = await sendMail({ to: user.email, ...resetEmail }, req.log);
+
+    if (!sent) {
+      // Dev/demo mode: return the reset URL so the app still works without SMTP
+      req.log.warn("SMTP not configured — returning reset URL in response (dev mode)");
+      return res.json({ message: GENERIC_MSG, _dev_reset_url: resetUrl });
     }
 
-    // Demo/dev mode: return the reset URL so the app still works without SMTP
-    req.log.warn("SMTP not configured — returning reset URL in response (dev mode)");
-    return res.json({
-      message: GENERIC_MSG,
-      _dev_reset_url: resetUrl,
-    });
+    return res.json({ message: GENERIC_MSG });
   } catch (err) {
     req.log.error(err);
     return res.status(500).json({ error: "Failed to process request. Please try again." });

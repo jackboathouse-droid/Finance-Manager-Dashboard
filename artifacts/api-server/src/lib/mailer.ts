@@ -192,6 +192,27 @@ export interface WeeklyDigestData {
   topCategoryAmount: number;
 }
 
+export function buildPasswordResetEmail(
+  name: string,
+  resetUrl: string,
+  ttlMinutes: number
+): Pick<MailOptions, "subject" | "html" | "text"> {
+  const firstName = name.split(" ")[0];
+  const html = baseLayout(`
+    <h2 style="margin:0 0 8px;color:#0f172a;font-size:22px;">Reset your password</h2>
+    <p style="color:#475569;line-height:1.6;margin:0 0 16px;">
+      Hi ${firstName}, we received a request to reset the password for your Bubble account.
+      Click the button below to choose a new password. This link expires in <strong>${ttlMinutes} minutes</strong>.
+    </p>
+    ${ctaButton(resetUrl, "Reset password")}
+    <p style="color:#94a3b8;font-size:13px;margin:16px 0 0;">
+      If you didn't request this, you can safely ignore this email — your password won't change.
+    </p>
+  `);
+  const text = `Reset your Bubble password\n\nHi ${firstName},\n\nClick the link below to reset your password (expires in ${ttlMinutes} min):\n\n${resetUrl}\n\nIf you didn't request this, ignore this email.`;
+  return { subject: "Reset your Bubble password", html, text };
+}
+
 export function buildWeeklyDigestEmail(
   name: string,
   data: WeeklyDigestData,
