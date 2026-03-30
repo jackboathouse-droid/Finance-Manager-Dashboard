@@ -1,8 +1,21 @@
 import Stripe from "stripe";
+import { StripeSync } from "stripe-replit-sync";
 
-let connectionSettings: any;
+interface ConnectorSettings {
+  publishable: string;
+  secret: string;
+}
 
-async function getCredentials() {
+interface ConnectorItem {
+  id: string;
+  settings: ConnectorSettings;
+}
+
+interface ConnectorsApiResponse {
+  items?: ConnectorItem[];
+}
+
+async function getCredentials(): Promise<{ publishableKey: string; secretKey: string }> {
   const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
   const xReplitToken = process.env.REPL_IDENTITY
     ? "repl " + process.env.REPL_IDENTITY
@@ -30,8 +43,8 @@ async function getCredentials() {
     },
   });
 
-  const data = await response.json();
-  connectionSettings = data.items?.[0];
+  const data = (await response.json()) as ConnectorsApiResponse;
+  const connectionSettings = data.items?.[0];
 
   if (
     !connectionSettings ||
@@ -47,28 +60,30 @@ async function getCredentials() {
   };
 }
 
-export async function getUncachableStripeClient() {
+// Use "latest" as a valid well-known API version fallback
+const STRIPE_API_VERSION = "2025-08-27.basil" as Stripe.LatestApiVersion;
+
+export async function getUncachableStripeClient(): Promise<Stripe> {
   const { secretKey } = await getCredentials();
   return new Stripe(secretKey, {
-    apiVersion: "2025-08-27.basil" as any,
+    apiVersion: STRIPE_API_VERSION,
   });
 }
 
-export async function getStripePublishableKey() {
+export async function getStripePublishableKey(): Promise<string> {
   const { publishableKey } = await getCredentials();
   return publishableKey;
 }
 
-export async function getStripeSecretKey() {
+export async function getStripeSecretKey(): Promise<string> {
   const { secretKey } = await getCredentials();
   return secretKey;
 }
 
-let stripeSync: any = null;
+let stripeSync: StripeSync | null = null;
 
-export async function getStripeSync() {
+export async function getStripeSync(): Promise<StripeSync> {
   if (!stripeSync) {
-    const { StripeSync } = await import("stripe-replit-sync");
     const secretKey = await getStripeSecretKey();
     stripeSync = new StripeSync({
       poolConfig: {
