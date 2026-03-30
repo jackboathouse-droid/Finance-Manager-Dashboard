@@ -2,8 +2,18 @@ import { Router, type IRouter, type Request, type Response, type NextFunction } 
 import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 import { db } from "@workspace/db";
-import { usersTable } from "@workspace/db";
-import { eq, count } from "drizzle-orm";
+import {
+  usersTable,
+  accountsTable,
+  transactionsTable,
+  budgetsTable,
+  manualAssetsTable,
+  categoriesTable,
+  subcategoriesTable,
+  peopleTable,
+  projectsTable,
+} from "@workspace/db";
+import { eq, count, inArray } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import * as nodemailer from "nodemailer";
 import passport from "../lib/google-auth";
@@ -484,21 +494,23 @@ router.delete("/auth/account", async (req, res) => {
       }
     }
 
-    // Delete all user-owned data in dependency order
-    await db.execute(sql`DELETE FROM password_reset_tokens WHERE user_id = ${userId}`);
-    await db.execute(sql`DELETE FROM project_contributions WHERE user_id = ${userId}`);
-    await db.execute(sql`DELETE FROM transactions WHERE user_id = ${userId}`);
-    await db.execute(sql`DELETE FROM budgets WHERE user_id = ${userId}`);
-    await db.execute(sql`DELETE FROM manual_assets WHERE user_id = ${userId}`);
-    await db.execute(sql`DELETE FROM projects WHERE user_id = ${userId}`);
-    await db.execute(sql`DELETE FROM accounts WHERE user_id = ${userId}`);
-    await db.execute(sql`DELETE FROM user_settings WHERE user_id = ${userId}`);
-    await db.execute(sql`DELETE FROM people WHERE user_id = ${userId}`);
-    // Remove all sessions for this user from the session store
-    await db.execute(
-      sql`DELETE FROM user_sessions WHERE (sess::jsonb->>'userId')::int = ${userId}`
-    );
-    await db.execute(sql`DELETE FROM users WHERE id = ${userId}`);
+    // Delete all user-owned data atomically in FK dependency order
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`DELETE FROM password_reset_tokens WHERE user_id = ${userId}`);
+      await tx.execute(sql`DELETE FROM project_contributions WHERE user_id = ${userId}`);
+      await tx.execute(sql`DELETE FROM transactions WHERE user_id = ${userId}`);
+      await tx.execute(sql`DELETE FROM budgets WHERE user_id = ${userId}`);
+      await tx.execute(sql`DELETE FROM manual_assets WHERE user_id = ${userId}`);
+      await tx.execute(sql`DELETE FROM projects WHERE user_id = ${userId}`);
+      await tx.execute(sql`DELETE FROM accounts WHERE user_id = ${userId}`);
+      await tx.execute(sql`DELETE FROM user_settings WHERE user_id = ${userId}`);
+      await tx.execute(sql`DELETE FROM people WHERE user_id = ${userId}`);
+      // Remove all sessions for this user from the session store
+      await tx.execute(
+        sql`DELETE FROM user_sessions WHERE (sess::jsonb->>'userId')::int = ${userId}`
+      );
+      await tx.execute(sql`DELETE FROM users WHERE id = ${userId}`);
+    });
 
     req.log.info({ userId, email: user.email }, "Account deleted");
 
@@ -528,24 +540,74 @@ router.get("/auth/export", async (req, res) => {
       .from(usersTable)
       .where(eq(usersTable.id, userId));
 
-    const accounts = await db.execute(sql`SELECT * FROM accounts WHERE user_id = ${userId}`);
-    const transactions = await db.execute(sql`SELECT * FROM transactions WHERE user_id = ${userId} ORDER BY date DESC`);
-    const budgets = await db.execute(sql`SELECT * FROM budgets WHERE user_id = ${userId}`);
-    const manualAssets = await db.execute(sql`SELECT * FROM manual_assets WHERE user_id = ${userId}`);
-    const projects = await db.execute(sql`SELECT * FROM projects WHERE user_id = ${userId}`);
-    const people = await db.execute(sql`SELECT * FROM people WHERE user_id = ${userId}`);
+    const accounts = await db
+      .select()
+      .from(accountsTable)
+      .where(eq(accountsTable.user_id, userId));
 
-    const getRows = (result: any) => (result as any).rows ?? result;
+    const transactions = await db
+      .select()
+      .from(transactionsTable)
+      .where(eq(transactionsTable.user_id, userId));
+
+    const budgets = await db
+      .select()
+      .from(budgetsTable)
+      .where(sql`${budgetsTable.user_id} = ${userId}`);
+
+    const manualAssets = await db
+      .select()
+      .from(manualAssetsTable)
+      .where(eq(manualAssetsTable.user_id, userId));
+
+    const projects = await db
+      .select()
+      .from(projectsTable)
+      .where(eq(projectsTable.user_id, userId));
+
+    const people = await db
+      .select()
+      .from(peopleTable)
+      .where(eq(peopleTable.user_id, userId));
+
+    // Categories and subcategories used in this user's transactions/budgets
+    const usedCategoryIds = [
+      ...new Set(
+        [...transactions, ...budgets]
+          .map((r) => r.category_id)
+          .filter((id): id is number => id != null)
+      ),
+    ];
+
+    const usedSubcategoryIds = [
+      ...new Set(
+        [...transactions, ...budgets]
+          .map((r) => r.subcategory_id)
+          .filter((id): id is number => id != null)
+      ),
+    ];
+
+    const categoriesUsed =
+      usedCategoryIds.length > 0
+        ? await db.select().from(categoriesTable).where(inArray(categoriesTable.id, usedCategoryIds))
+        : [];
+
+    const subcategoriesUsed =
+      usedSubcategoryIds.length > 0
+        ? await db.select().from(subcategoriesTable).where(inArray(subcategoriesTable.id, usedSubcategoryIds))
+        : [];
 
     const exportData = {
       exported_at: new Date().toISOString(),
       user: { id: user?.id, email: user?.email, full_name: user?.full_name, created_at: user?.created_at },
-      accounts: getRows(accounts),
-      transactions: getRows(transactions),
-      budgets: getRows(budgets),
-      manual_assets: getRows(manualAssets),
-      projects: getRows(projects),
-      people: getRows(people),
+      accounts,
+      transactions,
+      budgets,
+      manual_assets: manualAssets,
+      projects,
+      people,
+      categories_used: categoriesUsed,
+      subcategories_used: subcategoriesUsed,
     };
 
     const filename = `bubble-data-export-${new Date().toISOString().split("T")[0]}.json`;
