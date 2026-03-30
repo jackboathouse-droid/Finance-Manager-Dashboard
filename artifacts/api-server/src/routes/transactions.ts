@@ -163,12 +163,25 @@ router.post("/transactions/import", async (req, res) => {
           continue;
         }
 
+        const parsedCategoryId = row.category_id ? parseInt(row.category_id) : null;
+        const parsedSubcategoryId = row.subcategory_id ? parseInt(row.subcategory_id) : null;
+
+        // Validate ownership of category/subcategory IDs before inserting
+        if (!(await categoryBelongsToUser(parsedCategoryId, userId))) {
+          errors.push(`Row ${i + 1}: invalid or unauthorized category_id`);
+          continue;
+        }
+        if (!(await subcategoryBelongsToUser(parsedSubcategoryId, userId))) {
+          errors.push(`Row ${i + 1}: invalid or unauthorized subcategory_id`);
+          continue;
+        }
+
         await db.insert(transactionsTable).values({
           date: row.date,
           description: row.description,
           account_id: parseInt(row.account_id),
-          category_id: row.category_id ? parseInt(row.category_id) : null,
-          subcategory_id: row.subcategory_id ? parseInt(row.subcategory_id) : null,
+          category_id: parsedCategoryId,
+          subcategory_id: parsedSubcategoryId,
           amount: row.amount,
           person: row.person,
           type: row.type,

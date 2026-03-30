@@ -126,7 +126,12 @@ function ConfirmDeleteDialog({
           <Button variant="outline" onClick={onCancel} disabled={isPending}>
             Cancel
           </Button>
-          <Button variant="destructive" onClick={onConfirm} disabled={isPending}>
+          <Button
+            variant="destructive"
+            onClick={onConfirm}
+            disabled={isPending || txCount > 0}
+            title={txCount > 0 ? "Cannot delete while transactions are linked" : undefined}
+          >
             {isPending ? "Deleting…" : "Delete"}
           </Button>
         </div>
@@ -508,7 +513,11 @@ export default function Categories() {
         toast({ title: "Category deleted" });
         setDeletingCat(null);
       },
-      onError: () => toast({ title: "Failed to delete", variant: "destructive" }),
+      onError: (err: any) => {
+        const msg = err?.response?.data?.error ?? err?.message ?? "Failed to delete";
+        toast({ title: msg, variant: "destructive" });
+        setDeletingCat(null);
+      },
     });
   };
 
@@ -529,7 +538,11 @@ export default function Categories() {
         toast({ title: "Subcategory deleted" });
         setDeletingSub(null);
       },
-      onError: () => toast({ title: "Failed to delete", variant: "destructive" }),
+      onError: (err: any) => {
+        const msg = err?.response?.data?.error ?? err?.message ?? "Failed to delete";
+        toast({ title: msg, variant: "destructive" });
+        setDeletingSub(null);
+      },
     });
   };
 

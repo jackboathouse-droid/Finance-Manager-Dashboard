@@ -127,6 +127,23 @@ router.delete("/subcategories/:id", async (req, res) => {
     if (!userId) return res.status(401).json({ error: "Authentication required." });
 
     const id = parseInt(req.params.id);
+
+    // Block deletion if any transactions reference this subcategory
+    const [txCountRow] = await db
+      .select({ count: sql<string>`COUNT(*)` })
+      .from(transactionsTable)
+      .where(
+        and(eq(transactionsTable.user_id, userId), eq(transactionsTable.subcategory_id, id))
+      );
+
+    const txCount = parseInt(txCountRow?.count ?? "0");
+    if (txCount > 0) {
+      return res.status(409).json({
+        error: `Cannot delete: ${txCount} transaction${txCount !== 1 ? "s" : ""} are linked to this subcategory.`,
+        transaction_count: txCount,
+      });
+    }
+
     await db
       .delete(subcategoriesTable)
       .where(and(eq(subcategoriesTable.id, id), eq(subcategoriesTable.user_id, userId)));

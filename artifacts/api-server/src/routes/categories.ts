@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { categoriesTable, transactionsTable } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { categoriesTable, subcategoriesTable, transactionsTable } from "@workspace/db";
+import { eq, and, sql, or } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -92,6 +92,38 @@ router.delete("/categories/:id", async (req, res) => {
     if (!userId) return res.status(401).json({ error: "Authentication required." });
 
     const id = parseInt(req.params.id);
+
+    // Check for linked transactions (direct category OR via subcategory under this category)
+    const subIds = await db
+      .select({ id: subcategoriesTable.id })
+      .from(subcategoriesTable)
+      .where(and(eq(subcategoriesTable.category_id, id), eq(subcategoriesTable.user_id, userId)));
+
+    const subIdList = subIds.map((r) => r.id);
+
+    const [txCountRow] = await db
+      .select({ count: sql<string>`COUNT(*)` })
+      .from(transactionsTable)
+      .where(
+        and(
+          eq(transactionsTable.user_id, userId),
+          subIdList.length > 0
+            ? or(
+                eq(transactionsTable.category_id, id),
+                sql`${transactionsTable.subcategory_id} = ANY(ARRAY[${sql.join(subIdList.map((sid) => sql`${sid}`), sql`, `)}]::int[])`
+              )
+            : eq(transactionsTable.category_id, id)
+        )
+      );
+
+    const txCount = parseInt(txCountRow?.count ?? "0");
+    if (txCount > 0) {
+      return res.status(409).json({
+        error: `Cannot delete: ${txCount} transaction${txCount !== 1 ? "s" : ""} are linked to this category or its subcategories.`,
+        transaction_count: txCount,
+      });
+    }
+
     await db
       .delete(categoriesTable)
       .where(and(eq(categoriesTable.id, id), eq(categoriesTable.user_id, userId)));
