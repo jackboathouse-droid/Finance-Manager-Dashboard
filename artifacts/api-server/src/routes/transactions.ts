@@ -5,9 +5,12 @@ import {
   accountsTable,
   categoriesTable,
   subcategoriesTable,
+  usersTable,
 } from "@workspace/db";
-import { eq, and, sql, or } from "drizzle-orm";
+import { eq, and, sql, or, count } from "drizzle-orm";
 import { categoryBelongsToUser, subcategoryBelongsToUser } from "../lib/validate-ownership";
+
+const FREE_TRANSACTION_LIMIT = 100;
 
 const router: IRouter = Router();
 
@@ -91,6 +94,23 @@ router.post("/transactions", async (req, res) => {
   try {
     const userId = req.session?.userId;
     if (!userId) return res.status(401).json({ error: "Authentication required." });
+
+    const [user] = await db.select({ plan: usersTable.plan }).from(usersTable).where(eq(usersTable.id, userId));
+    const plan = user?.plan ?? "free";
+
+    if (plan === "free") {
+      const [{ cnt }] = await db
+        .select({ cnt: count() })
+        .from(transactionsTable)
+        .where(eq(transactionsTable.user_id, userId));
+      if (Number(cnt) >= FREE_TRANSACTION_LIMIT) {
+        return res.status(402).json({
+          error: "Free plan limit reached.",
+          limit: FREE_TRANSACTION_LIMIT,
+          upgrade: true,
+        });
+      }
+    }
 
     const body = req.body as {
       date: string;

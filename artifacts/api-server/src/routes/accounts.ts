@@ -1,7 +1,9 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { accountsTable, transactionsTable } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { accountsTable, transactionsTable, usersTable } from "@workspace/db";
+import { eq, and, sql, count } from "drizzle-orm";
+
+const FREE_ACCOUNT_LIMIT = 2;
 
 const router: IRouter = Router();
 
@@ -53,6 +55,23 @@ router.post("/accounts", async (req, res) => {
   try {
     const userId = req.session?.userId;
     if (!userId) return res.status(401).json({ error: "Authentication required." });
+
+    const [user] = await db.select({ plan: usersTable.plan }).from(usersTable).where(eq(usersTable.id, userId));
+    const plan = user?.plan ?? "free";
+
+    if (plan === "free") {
+      const [{ cnt }] = await db
+        .select({ cnt: count() })
+        .from(accountsTable)
+        .where(eq(accountsTable.user_id, userId));
+      if (Number(cnt) >= FREE_ACCOUNT_LIMIT) {
+        return res.status(402).json({
+          error: "Free plan limit reached.",
+          limit: FREE_ACCOUNT_LIMIT,
+          upgrade: true,
+        });
+      }
+    }
 
     const { name, type, person, starting_balance } = req.body as {
       name: string;

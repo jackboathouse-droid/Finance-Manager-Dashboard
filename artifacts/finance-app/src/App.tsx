@@ -22,6 +22,7 @@ import Projects from "./pages/projects";
 import SettingsPage from "./pages/settings";
 import AssetsPage from "./pages/assets";
 import Privacy from "./pages/privacy";
+import Pricing from "./pages/pricing";
 import NotFound from "./pages/not-found";
 
 const queryClient = new QueryClient();
@@ -81,6 +82,7 @@ function Router() {
 
       {/* Public routes — accessible without authentication */}
       <Route path="/privacy" component={Privacy} />
+      <Route path="/pricing" component={Pricing} />
 
       <Route component={NotFound} />
     </Switch>

@@ -9,6 +9,7 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 import passport from "./lib/google-auth";
 import { getFrontendBase } from "./lib/google-auth";
+import { WebhookHandlers } from "./lib/webhookHandlers";
 
 const SESSION_SECRET_FALLBACK = "finance-app-secret-key-dev";
 
@@ -16,6 +17,30 @@ const app: Express = express();
 
 // Trust the first proxy hop — required for secure cookies behind Replit's reverse proxy
 app.set("trust proxy", 1);
+
+// ── Stripe Webhook ─────────────────────────────────────────────────────────────
+// MUST be registered BEFORE express.json() so the raw Buffer is available
+app.post(
+  "/api/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  async (req, res) => {
+    const signature = req.headers["stripe-signature"];
+    if (!signature) return res.status(400).json({ error: "Missing stripe-signature" });
+
+    try {
+      const sig = Array.isArray(signature) ? signature[0] : signature;
+      if (!Buffer.isBuffer(req.body)) {
+        logger.error("Stripe webhook: req.body is not a Buffer — check middleware order");
+        return res.status(500).json({ error: "Webhook processing error" });
+      }
+      await WebhookHandlers.processWebhook(req.body as Buffer, sig);
+      res.status(200).json({ received: true });
+    } catch (error: any) {
+      logger.error({ err: error }, "Stripe webhook error");
+      res.status(400).json({ error: "Webhook processing error" });
+    }
+  }
+);
 
 // ── Security headers ──────────────────────────────────────────────────────────
 // This is a JSON API server; configure Helmet with a strict CSP that blocks

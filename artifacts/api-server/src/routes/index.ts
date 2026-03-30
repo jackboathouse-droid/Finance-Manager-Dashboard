@@ -14,6 +14,7 @@ import peopleRouter from "./people";
 import aiRouter from "./ai";
 import assetsRouter from "./assets";
 import onboardingRouter from "./onboarding";
+import billingRouter from "./billing";
 
 const router: IRouter = Router();
 
@@ -32,5 +33,6 @@ router.use(peopleRouter);
 router.use(aiRouter);
 router.use(assetsRouter);
 router.use(onboardingRouter);
+router.use(billingRouter);
 
 export default router;

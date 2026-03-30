@@ -17,6 +17,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -60,6 +61,7 @@ export function TransactionForm({
 }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
 
   const createMutation = useCreateTransaction();
   const updateMutation = useUpdateTransaction();
@@ -294,6 +296,19 @@ export function TransactionForm({
             invalidate();
             toast({ title: "Transaction created" });
             onSuccess();
+          },
+          onError: (err: any) => {
+            const msg: string = err?.message ?? err?.error ?? "Failed to create transaction";
+            if (msg.includes("limit") || msg.includes("402") || err?.status === 402) {
+              toast({
+                title: "Transaction limit reached",
+                description: "Free plan allows 100 transactions. Upgrade to Pro for unlimited.",
+                variant: "destructive",
+              });
+              navigate("/pricing");
+            } else {
+              toast({ title: msg, variant: "destructive" });
+            }
           },
         }
       );

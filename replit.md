@@ -45,9 +45,22 @@ artifacts-monorepo/
 - **Auth**: Session-based login with registration. Demo account: admin/admin. New accounts sign up with email + password (bcryptjs, 12 rounds).
 - **Settings**: Per-user preferences stored in `user_settings` table. Financial (currency, date format), Notifications (3 toggles), Budget Settings (2 toggles), Security (change password). App-wide currency/date formatting uses module-level config updated by `SettingsContext` on load.
 
+## Billing & Subscriptions (Stripe)
+
+- **Stripe integration**: Connected via Replit Stripe connector; `stripe-replit-sync` syncs data to `stripe.*` schema tables
+- **Plans**: Free (2 accounts, 100 transactions) and Pro (unlimited)
+- **Billing routes**: `GET /api/billing/status`, `POST /api/billing/checkout`, `POST /api/billing/portal`, `GET /api/billing/products`
+- **Webhook**: `POST /api/stripe/webhook` — registered BEFORE `express.json()` in app.ts
+- **Stripe init**: `initStripe()` in index.ts runs `runMigrations()`, `findOrCreateManagedWebhook()`, `syncBackfill()` on startup
+- **Frontend**: `/pricing` public page (Free vs Pro comparison with monthly/yearly toggle), Pro badge in sidebar, Billing card in Settings
+- **Limit enforcement**: 402 returned on POST /accounts (>2) and POST /transactions (>100) for free users; frontend redirects to /pricing
+- **Products seeded**: `Bubble Pro` product with $9.99/mo and $79.99/yr prices in Stripe (run `pnpm --filter @workspace/scripts exec tsx src/seed-products.ts` to re-seed)
+- **stripeClient.ts** at `artifacts/api-server/src/lib/stripeClient.ts` — Replit connector credentials
+
 ## Database Schema
 
-- `users` — id, full_name, email (unique), password_hash, auth_provider, role (admin|user), google_id, profile_picture_url, created_at
+- `users` — id, full_name, email (unique), password_hash, auth_provider, role (admin|user), google_id, profile_picture_url, plan (free|pro, default free), stripe_customer_id, created_at
+- `stripe.*` — managed by stripe-replit-sync (products, prices, subscriptions, customers, etc.)
 - `accounts` — id, name, type (bank|credit_card), person, user_id (FK → users), starting_balance (numeric, default 0)
 - `categories` — id, name, type (income|expense) — shared/global, no user_id
 - `subcategories` — id, name, category_id, type — shared/global

@@ -8,6 +8,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,6 +48,7 @@ export function AccountForm({
 }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
 
   const createMutation = useCreateAccount();
   const updateMutation = useUpdateAccount();
@@ -88,6 +90,19 @@ export function AccountForm({
             queryClient.invalidateQueries({ queryKey: ["/api/accounts"] });
             toast({ title: "Account created" });
             onSuccess();
+          },
+          onError: (err: any) => {
+            const msg: string = err?.message ?? err?.error ?? "Failed to create account";
+            if (msg.includes("limit") || msg.includes("402") || err?.status === 402) {
+              toast({
+                title: "Account limit reached",
+                description: "Free plan allows 2 accounts. Upgrade to Pro for unlimited accounts.",
+                variant: "destructive",
+              });
+              navigate("/pricing");
+            } else {
+              toast({ title: msg, variant: "destructive" });
+            }
           },
         }
       );

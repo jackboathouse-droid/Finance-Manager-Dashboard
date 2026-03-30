@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, varchar } from "drizzle-orm/pg-core";
 
 export const usersTable = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -9,6 +9,8 @@ export const usersTable = pgTable("users", {
   role: text("role").notNull().default("user"), // "admin" | "user"
   google_id: text("google_id").unique(),
   profile_picture_url: text("profile_picture_url"),
+  plan: varchar("plan", { length: 20 }).notNull().default("free"), // "free" | "pro"
+  stripe_customer_id: text("stripe_customer_id"),
   created_at: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -35,6 +35,9 @@ import {
   Trash2,
   Download,
   AlertTriangle,
+  Zap,
+  CreditCard,
+  ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Link, useLocation } from "wouter";
@@ -321,6 +324,12 @@ export default function Settings() {
   // ── Danger zone state ─────────────────────────────────────────────────────
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
+  // ── Billing state ─────────────────────────────────────────────────────────
+  const [billingPlan, setBillingPlan] = useState<string>("free");
+  const [billingLoading, setBillingLoading] = useState(true);
+  const [portalLoading, setPortalLoading] = useState(false);
+  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+
   // Populate state from loaded settings
   useEffect(() => {
     if (!settings) return;
@@ -332,6 +341,33 @@ export default function Settings() {
     setRecurringBudgets(settings.recurring_budgets);
     setRolloverBudget(settings.rollover_budget);
   }, [settings]);
+
+  // Fetch billing status
+  useEffect(() => {
+    const b = import.meta.env.BASE_URL.replace(/\/$/, "");
+    fetch(`${b}/api/billing/status`, { credentials: "include" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d?.plan) setBillingPlan(d.plan); })
+      .catch(() => {})
+      .finally(() => setBillingLoading(false));
+  }, []);
+
+  const openBillingPortal = async () => {
+    setPortalLoading(true);
+    try {
+      const res = await fetch(`${base}/api/billing/portal`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to open billing portal");
+      if (data.url) window.location.href = data.url;
+    } catch (err: unknown) {
+      toast({ title: (err as Error).message, variant: "destructive" });
+    } finally {
+      setPortalLoading(false);
+    }
+  };
 
   // ── Save handlers ─────────────────────────────────────────────────────────
 
@@ -699,7 +735,68 @@ export default function Settings() {
         </p>
       </SectionCard>
 
-      {/* ── 6. Danger Zone ─────────────────────────────────────────────────── */}
+      {/* ── 6. Billing ──────────────────────────────────────────────────────── */}
+      <SectionCard
+        icon={CreditCard}
+        title="Billing & Plan"
+        description="Manage your subscription and billing details."
+      >
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-0.5">
+              <p className="text-sm font-medium">Current plan</p>
+              {billingLoading ? (
+                <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+              ) : (
+                <span className={cn(
+                  "inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full",
+                  billingPlan === "pro"
+                    ? "bg-primary/10 text-primary border border-primary/20"
+                    : "bg-muted text-muted-foreground border border-border"
+                )}>
+                  {billingPlan === "pro" && <Zap className="h-3 w-3" />}
+                  {billingPlan === "pro" ? "Pro" : "Free"}
+                </span>
+              )}
+            </div>
+            {billingPlan === "free" && (
+              <p className="text-xs text-muted-foreground">
+                2 accounts · 100 transactions. Upgrade for unlimited access.
+              </p>
+            )}
+            {billingPlan === "pro" && (
+              <p className="text-xs text-muted-foreground">
+                Unlimited accounts, transactions, and all Pro features.
+              </p>
+            )}
+          </div>
+          {billingPlan === "free" ? (
+            <Link href="/pricing">
+              <Button size="sm" className="shrink-0">
+                <Zap className="h-4 w-4 mr-2" />
+                Upgrade to Pro
+              </Button>
+            </Link>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              onClick={openBillingPortal}
+              disabled={portalLoading}
+            >
+              {portalLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <ExternalLink className="h-4 w-4 mr-2" />
+              )}
+              Manage billing
+            </Button>
+          )}
+        </div>
+      </SectionCard>
+
+      {/* ── 7. Danger Zone ─────────────────────────────────────────────────── */}
       <SectionCard
         icon={AlertTriangle}
         title="Danger Zone"
