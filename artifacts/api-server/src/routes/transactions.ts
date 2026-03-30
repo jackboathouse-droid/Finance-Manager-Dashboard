@@ -130,9 +130,9 @@ router.post("/transactions", async (req, res) => {
       .select(TX_SELECT)
       .from(transactionsTable)
       .leftJoin(accountsTable, eq(transactionsTable.account_id, accountsTable.id))
-      .leftJoin(categoriesTable, eq(transactionsTable.category_id, categoriesTable.id))
-      .leftJoin(subcategoriesTable, eq(transactionsTable.subcategory_id, subcategoriesTable.id))
-      .where(eq(transactionsTable.id, tx.id));
+      .leftJoin(categoriesTable, and(eq(transactionsTable.category_id, categoriesTable.id), eq(categoriesTable.user_id, userId)))
+      .leftJoin(subcategoriesTable, and(eq(transactionsTable.subcategory_id, subcategoriesTable.id), eq(subcategoriesTable.user_id, userId)))
+      .where(and(eq(transactionsTable.id, tx.id), eq(transactionsTable.user_id, userId)));
 
     res.status(201).json({ ...enriched, amount: parseFloat(enriched.amount) });
   } catch (err) {

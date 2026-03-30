@@ -18,10 +18,11 @@ BEGIN
     -- 1. Add nullable column
     ALTER TABLE categories ADD COLUMN user_id integer;
 
-    -- 2. Pick a fallback user: prefer admin, else first user, else skip
+    -- 2. Pick the admin user to own legacy rows; skip if no admin exists yet
     SELECT id INTO fallback_id
     FROM users
-    ORDER BY CASE WHEN role = 'admin' THEN 0 ELSE 1 END, id
+    WHERE role = 'admin'
+    ORDER BY id
     LIMIT 1;
 
     IF fallback_id IS NOT NULL THEN
@@ -49,7 +50,8 @@ BEGIN
 
     SELECT id INTO fallback_id
     FROM users
-    ORDER BY CASE WHEN role = 'admin' THEN 0 ELSE 1 END, id
+    WHERE role = 'admin'
+    ORDER BY id
     LIMIT 1;
 
     IF fallback_id IS NOT NULL THEN
