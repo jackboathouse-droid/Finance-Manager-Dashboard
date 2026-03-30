@@ -600,14 +600,12 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── Getting Started (only shown while onboarding is incomplete) ── */}
-      {onboardingData && !onboardingData.completed && (
-        <GettingStartedCard status={onboardingData} />
-      )}
-
-      {/* ── Section 1: Financial Snapshot ──────────────────────────────── */}
+      {/* ── Section 1: Financial Snapshot (or Getting Started) ─────────── */}
       <div>
-        <SectionLabel label="Financial Snapshot" />
+        <SectionLabel label={onboardingData && !onboardingData.completed ? "Getting Started" : "Financial Snapshot"} />
+        {onboardingData && !onboardingData.completed ? (
+          <GettingStartedCard status={onboardingData} />
+        ) : (
         <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
           {/* Net Worth */}
           <KpiCard
@@ -673,6 +671,7 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </div>
+        )}
       </div>
 
       {/* ── AI Insights ─────────────────────────────────────────────────── */}
@@ -827,7 +826,15 @@ export default function Dashboard() {
                   </div>
                 </>
               ) : (
-                <ChartEmpty message={`No expenses this ${viewMode === "weekly" ? "week" : "month"}`} icon={BarChart3} />
+                <div className="h-[240px] flex flex-col items-center justify-center text-muted-foreground gap-2">
+                  <div className="h-12 w-12 rounded-full bg-muted/50 flex items-center justify-center">
+                    <BarChart3 className="h-6 w-6 opacity-30" />
+                  </div>
+                  <p className="text-sm font-medium">No expenses this {viewMode === "weekly" ? "week" : "month"}</p>
+                  <Link href="/transactions">
+                    <span className="text-xs text-primary hover:underline cursor-pointer">Add a transaction →</span>
+                  </Link>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -886,7 +893,20 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent className="pt-0">
             {recentTx.length === 0 ? (
-              <ChartEmpty message="No transactions yet" icon={Wallet} />
+              <div className="h-[200px] flex flex-col items-center justify-center gap-3 text-muted-foreground">
+                <div className="h-12 w-12 rounded-full bg-muted/50 flex items-center justify-center">
+                  <Wallet className="h-6 w-6 opacity-30" />
+                </div>
+                <div className="text-center">
+                  <p className="text-sm font-medium">No transactions yet</p>
+                  <p className="text-xs text-muted-foreground/70 mt-0.5">Start recording your income and expenses.</p>
+                </div>
+                <Link href="/transactions">
+                  <Button size="sm" variant="outline" className="text-xs">
+                    <PlusCircle className="mr-1.5 h-3.5 w-3.5" /> Add your first transaction
+                  </Button>
+                </Link>
+              </div>
             ) : (
               <div className="divide-y divide-border/40">
                 {recentTx.map((tx) => (
