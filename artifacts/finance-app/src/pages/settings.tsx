@@ -13,6 +13,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
   DollarSign,
   Calendar,
   Bell,
@@ -24,8 +32,13 @@ import {
   Loader2,
   RefreshCw,
   TrendingUp,
+  Trash2,
+  Download,
+  AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Link, useLocation } from "wouter";
+import { useAuth } from "@/lib/auth-context";
 
 // ── Tiny helpers ──────────────────────────────────────────────────────────────
 
@@ -34,21 +47,33 @@ function SectionCard({
   title,
   description,
   children,
+  variant = "default",
 }: {
   icon: React.ElementType;
   title: string;
   description: string;
   children: React.ReactNode;
+  variant?: "default" | "danger";
 }) {
+  const isDanger = variant === "danger";
   return (
-    <div className="bg-card border border-border/50 rounded-2xl shadow-sm overflow-hidden">
-      <div className="px-6 py-5 border-b border-border/40 bg-muted/20">
+    <div className={cn(
+      "bg-card border rounded-2xl shadow-sm overflow-hidden",
+      isDanger ? "border-red-200 dark:border-red-900/60" : "border-border/50"
+    )}>
+      <div className={cn(
+        "px-6 py-5 border-b",
+        isDanger ? "border-red-100 dark:border-red-900/40 bg-red-50/60 dark:bg-red-950/20" : "border-border/40 bg-muted/20"
+      )}>
         <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-            <Icon className="h-4.5 w-4.5 text-primary" />
+          <div className={cn(
+            "h-9 w-9 rounded-xl flex items-center justify-center shrink-0",
+            isDanger ? "bg-red-100 dark:bg-red-900/40" : "bg-primary/10"
+          )}>
+            <Icon className={cn("h-4.5 w-4.5", isDanger ? "text-red-600 dark:text-red-400" : "text-primary")} />
           </div>
           <div>
-            <h2 className="text-base font-semibold leading-tight">{title}</h2>
+            <h2 className={cn("text-base font-semibold leading-tight", isDanger && "text-red-700 dark:text-red-400")}>{title}</h2>
             <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
           </div>
         </div>
@@ -135,11 +160,140 @@ function passwordStrength(pw: string): { level: 0 | 1 | 2 | 3; label: string; co
   return { level: 3, label: "Strong", color: "bg-emerald-500" };
 }
 
+// ── Delete Account dialog ─────────────────────────────────────────────────────
+
+function DeleteAccountDialog({
+  open,
+  onClose,
+  userEmail,
+}: {
+  open: boolean;
+  onClose: () => void;
+  userEmail: string;
+}) {
+  const [confirmEmail, setConfirmEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+
+  const emailMatches = confirmEmail.trim().toLowerCase() === userEmail.toLowerCase();
+  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+  const handleDelete = async () => {
+    if (!emailMatches) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`${base}/api/auth/account`, {
+        method: "DELETE",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: password || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast({ title: data.error ?? "Failed to delete account.", variant: "destructive" });
+        return;
+      }
+      toast({ title: "Account deleted", description: "All your data has been permanently removed." });
+      setLocation("/login");
+    } catch {
+      toast({ title: "Network error. Please try again.", variant: "destructive" });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleClose = () => {
+    if (!deleting) {
+      setConfirmEmail("");
+      setPassword("");
+      onClose();
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
+            <Trash2 className="h-5 w-5" />
+            Delete your account
+          </DialogTitle>
+          <DialogDescription className="leading-relaxed">
+            This will <strong>permanently delete</strong> your account and all associated data —
+            including all transactions, accounts, budgets, assets, and settings. This action cannot
+            be undone.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 pt-1">
+          <div className="rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 px-4 py-3 flex items-start gap-2.5">
+            <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+            <p className="text-sm text-red-700 dark:text-red-300">
+              All data will be immediately and permanently deleted from our servers.
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Type your email to confirm
+            </Label>
+            <Input
+              type="email"
+              placeholder={userEmail}
+              value={confirmEmail}
+              onChange={(e) => setConfirmEmail(e.target.value)}
+              className="h-10"
+              autoComplete="off"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Current password <span className="normal-case font-normal">(if using email sign-in)</span>
+            </Label>
+            <div className="relative">
+              <Input
+                type="password"
+                placeholder="Enter your password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="h-10"
+                autoComplete="current-password"
+              />
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2 mt-2">
+          <Button variant="outline" onClick={handleClose} disabled={deleting} className="flex-1">
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={handleDelete}
+            disabled={!emailMatches || deleting}
+            className="flex-1"
+          >
+            {deleting ? (
+              <><Loader2 className="h-4 w-4 animate-spin mr-2" />Deleting…</>
+            ) : (
+              <><Trash2 className="h-4 w-4 mr-2" />Delete forever</>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function Settings() {
   const { settings, updateSettings } = useSettings();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   // ── Financial preferences state ───────────────────────────────────────────
   const [currency, setCurrency] = useState("USD");
@@ -163,6 +317,9 @@ export default function Settings() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
   const [passwordSuccess, setPasswordSuccess] = useState(false);
+
+  // ── Danger zone state ─────────────────────────────────────────────────────
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   // Populate state from loaded settings
   useEffect(() => {
@@ -252,8 +409,14 @@ export default function Settings() {
     }
   };
 
+  const handleDownloadData = () => {
+    const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+    window.location.href = `${base}/api/auth/export`;
+  };
+
   const strength = passwordStrength(newPassword);
   const passwordsMatch = newPassword && confirmPassword && newPassword === confirmPassword;
+  const userEmail = user?.username ?? "";
 
   return (
     <div className="max-w-2xl mx-auto space-y-6 pb-12">
@@ -318,7 +481,7 @@ export default function Settings() {
           <span className="text-muted-foreground mx-2">·</span>
           <span className="font-medium">
             {(() => {
-              const d = new Date(2026, 2, 22); // March 22 2026
+              const d = new Date(2026, 2, 22);
               const day = String(d.getDate()).padStart(2, "0");
               const month = String(d.getMonth() + 1).padStart(2, "0");
               const year = String(d.getFullYear());
@@ -512,6 +675,61 @@ export default function Settings() {
           </Button>
         </div>
       </SectionCard>
+
+      {/* ── 5. Privacy & Data ──────────────────────────────────────────────── */}
+      <SectionCard
+        icon={Download}
+        title="Privacy & Data"
+        description="Download a copy of your data or review our Privacy Policy."
+      >
+        <div className="flex flex-col sm:flex-row gap-3">
+          <Button variant="outline" className="flex-1 justify-start gap-2" onClick={handleDownloadData}>
+            <Download className="h-4 w-4" />
+            Download my data
+          </Button>
+          <Link href="/privacy" className="flex-1">
+            <Button variant="outline" className="w-full justify-start gap-2">
+              <Shield className="h-4 w-4" />
+              Privacy Policy
+            </Button>
+          </Link>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Your data export includes all transactions, accounts, budgets, assets, and settings in JSON format.
+        </p>
+      </SectionCard>
+
+      {/* ── 6. Danger Zone ─────────────────────────────────────────────────── */}
+      <SectionCard
+        icon={AlertTriangle}
+        title="Danger Zone"
+        description="Irreversible actions — proceed with care."
+        variant="danger"
+      >
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium">Delete my account</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Permanently delete your account and all associated data. This cannot be undone.
+            </p>
+          </div>
+          <Button
+            variant="destructive"
+            size="sm"
+            className="shrink-0"
+            onClick={() => setDeleteDialogOpen(true)}
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            Delete account
+          </Button>
+        </div>
+      </SectionCard>
+
+      <DeleteAccountDialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        userEmail={userEmail}
+      />
     </div>
   );
 }

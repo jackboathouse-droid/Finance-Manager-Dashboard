@@ -254,6 +254,13 @@ export default function Signup() {
                   Sign in
                 </Link>
               </p>
+              <p className="mt-3 text-center text-xs text-muted-foreground/70 leading-relaxed">
+                By creating an account, you agree to our{" "}
+                <Link href="/privacy" className="underline underline-offset-2 hover:text-muted-foreground">
+                  Privacy Policy
+                </Link>
+                .
+              </p>
             </CardContent>
           </Card>
         </div>

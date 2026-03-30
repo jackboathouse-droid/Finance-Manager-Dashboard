@@ -387,6 +387,11 @@ export default function Login() {
                   Sign up
                 </Link>
               </p>
+              <p className="mt-3 text-center text-xs text-muted-foreground/70">
+                <Link href="/privacy" className="underline underline-offset-2 hover:text-muted-foreground">
+                  Privacy Policy
+                </Link>
+              </p>
             </CardContent>
           </Card>
         </div>

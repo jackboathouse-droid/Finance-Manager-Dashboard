@@ -453,6 +453,112 @@ router.post("/auth/change-password", async (req, res) => {
   }
 });
 
+// ── Delete Account (Right to Erasure) ────────────────────────────────────────
+
+router.delete("/auth/account", async (req, res) => {
+  if (!req.session?.authenticated || !req.session.userId) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+
+  const userId = req.session.userId;
+  const { password } = req.body as { password?: string };
+
+  try {
+    const [user] = await db
+      .select({ id: usersTable.id, email: usersTable.email, password_hash: usersTable.password_hash })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId));
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    // Email/password users must supply their current password as confirmation
+    if (user.password_hash) {
+      if (!password) {
+        return res.status(400).json({ error: "Password is required to delete your account." });
+      }
+      const valid = await bcrypt.compare(password, user.password_hash);
+      if (!valid) {
+        return res.status(400).json({ error: "Password is incorrect." });
+      }
+    }
+
+    // Delete all user-owned data in dependency order
+    await db.execute(sql`DELETE FROM password_reset_tokens WHERE user_id = ${userId}`);
+    await db.execute(sql`DELETE FROM project_contributions WHERE user_id = ${userId}`);
+    await db.execute(sql`DELETE FROM transactions WHERE user_id = ${userId}`);
+    await db.execute(sql`DELETE FROM budgets WHERE user_id = ${userId}`);
+    await db.execute(sql`DELETE FROM manual_assets WHERE user_id = ${userId}`);
+    await db.execute(sql`DELETE FROM projects WHERE user_id = ${userId}`);
+    await db.execute(sql`DELETE FROM accounts WHERE user_id = ${userId}`);
+    await db.execute(sql`DELETE FROM user_settings WHERE user_id = ${userId}`);
+    await db.execute(sql`DELETE FROM people WHERE user_id = ${userId}`);
+    // Remove all sessions for this user from the session store
+    await db.execute(
+      sql`DELETE FROM user_sessions WHERE (sess::jsonb->>'userId')::int = ${userId}`
+    );
+    await db.execute(sql`DELETE FROM users WHERE id = ${userId}`);
+
+    req.log.info({ userId, email: user.email }, "Account deleted");
+
+    // Destroy the current session so the response doesn't reference a deleted user
+    req.session.destroy(() => {
+      res.clearCookie("connect.sid");
+      return res.json({ success: true, message: "Your account and all data have been permanently deleted." });
+    });
+  } catch (err) {
+    req.log.error(err);
+    return res.status(500).json({ error: "Failed to delete account. Please try again." });
+  }
+});
+
+// ── Export Data (Right of Access) ─────────────────────────────────────────────
+
+router.get("/auth/export", async (req, res) => {
+  if (!req.session?.authenticated || !req.session.userId) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+
+  const userId = req.session.userId;
+
+  try {
+    const [user] = await db
+      .select({ id: usersTable.id, email: usersTable.email, full_name: usersTable.full_name, created_at: usersTable.created_at })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId));
+
+    const accounts = await db.execute(sql`SELECT * FROM accounts WHERE user_id = ${userId}`);
+    const transactions = await db.execute(sql`SELECT * FROM transactions WHERE user_id = ${userId} ORDER BY date DESC`);
+    const budgets = await db.execute(sql`SELECT * FROM budgets WHERE user_id = ${userId}`);
+    const manualAssets = await db.execute(sql`SELECT * FROM manual_assets WHERE user_id = ${userId}`);
+    const projects = await db.execute(sql`SELECT * FROM projects WHERE user_id = ${userId}`);
+    const people = await db.execute(sql`SELECT * FROM people WHERE user_id = ${userId}`);
+
+    const getRows = (result: any) => (result as any).rows ?? result;
+
+    const exportData = {
+      exported_at: new Date().toISOString(),
+      user: { id: user?.id, email: user?.email, full_name: user?.full_name, created_at: user?.created_at },
+      accounts: getRows(accounts),
+      transactions: getRows(transactions),
+      budgets: getRows(budgets),
+      manual_assets: getRows(manualAssets),
+      projects: getRows(projects),
+      people: getRows(people),
+    };
+
+    const filename = `bubble-data-export-${new Date().toISOString().split("T")[0]}.json`;
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    req.log.info({ userId }, "User data exported");
+    return res.json(exportData);
+  } catch (err) {
+    req.log.error(err);
+    return res.status(500).json({ error: "Failed to export data. Please try again." });
+  }
+});
+
 // ── Me ────────────────────────────────────────────────────────────────────────
 
 router.get("/auth/me", (req, res) => {
