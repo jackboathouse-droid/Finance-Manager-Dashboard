@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -30,6 +30,7 @@ import {
 import { CreatableCombobox, ComboboxOption } from "@/components/ui/creatable-combobox";
 import { PeopleSelect } from "@/components/ui/people-select";
 import { cn } from "@/lib/utils";
+import { Sparkles, X } from "lucide-react";
 
 const formSchema = z.object({
   date: z.string().min(1, "Date is required"),
@@ -43,6 +44,12 @@ const formSchema = z.object({
 });
 
 type FormValues = z.infer<typeof formSchema>;
+
+interface AiSuggestion {
+  category_id: number;
+  category_name: string;
+  confidence: "high" | "medium" | "low";
+}
 
 export function TransactionForm({
   transaction,
@@ -78,11 +85,76 @@ export function TransactionForm({
 
   const selectedCategoryId = form.watch("category_id");
   const type = form.watch("type");
+  const description = form.watch("description");
 
   const { data: subcategories = [] as Subcategory[] } = useGetSubcategories(
     { category_id: selectedCategoryId ?? undefined },
     { query: { enabled: !!selectedCategoryId && selectedCategoryId > 0 } }
   );
+
+  // ── AI suggestion state ───────────────────────────────────────────────────
+  const [aiSuggestion, setAiSuggestion] = useState<AiSuggestion | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastFetchedDescRef = useRef<string>("");
+
+  // Dismiss suggestion when user manually picks a category
+  const handleCategorySelect = useCallback((val: string) => {
+    form.setValue("category_id", parseInt(val));
+    setAiSuggestion(null);
+  }, [form]);
+
+  // Fetch AI suggestion with 600ms debounce
+  useEffect(() => {
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+
+    const trimmed = (description ?? "").trim();
+
+    if (trimmed.length < 3 || type === "transfer") {
+      setAiSuggestion(null);
+      return;
+    }
+
+    // Don't re-fetch the same description
+    if (trimmed === lastFetchedDescRef.current) return;
+
+    debounceTimerRef.current = setTimeout(async () => {
+      lastFetchedDescRef.current = trimmed;
+      setAiLoading(true);
+      try {
+        const response = await fetch("/api/ai/categorise", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ description: trimmed, type }),
+        });
+        if (!response.ok) { setAiSuggestion(null); return; }
+        const data: AiSuggestion | null = await response.json();
+        setAiSuggestion(data);
+      } catch {
+        setAiSuggestion(null);
+      } finally {
+        setAiLoading(false);
+      }
+    }, 600);
+
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
+  }, [description, type]);
+
+  // Reset suggestion when type changes (also resets category)
+  useEffect(() => {
+    setAiSuggestion(null);
+    lastFetchedDescRef.current = "";
+  }, [type]);
+
+  // Accept AI suggestion
+  const acceptAiSuggestion = useCallback(() => {
+    if (!aiSuggestion) return;
+    form.setValue("category_id", aiSuggestion.category_id);
+    setAiSuggestion(null);
+  }, [aiSuggestion, form]);
 
   // Reset subcategory when category changes
   useEffect(() => {
@@ -119,7 +191,6 @@ export function TransactionForm({
           { data: { name: name.trim(), type: type as "income" | "expense" } },
           {
             onSuccess: (newCat) => {
-              // Optimistically push into the cache so it appears instantly
               queryClient.setQueryData<Category[]>(
                 ["/api/categories"],
                 (prev = []) => [...prev, newCat]
@@ -154,12 +225,10 @@ export function TransactionForm({
           },
           {
             onSuccess: (newSub) => {
-              // Push into the filtered subcategory query cache
               queryClient.setQueryData<Subcategory[]>(
                 ["/api/subcategories", { category_id: selectedCategoryId }],
                 (prev = []) => [...prev, newSub]
               );
-              // Also invalidate the full subcategories list
               queryClient.invalidateQueries({ queryKey: ["/api/subcategories"] });
               toast({ title: `Subcategory "${newSub.name}" created` });
               resolve({ value: newSub.id.toString(), label: newSub.name });
@@ -353,9 +422,44 @@ export function TransactionForm({
               placeholder="Select or create category…"
               searchPlaceholder="Search categories…"
               emptyText="No categories yet"
-              onSelect={(val) => form.setValue("category_id", parseInt(val))}
+              onSelect={handleCategorySelect}
               onCreate={handleCreateCategory}
             />
+
+            {/* AI suggestion badge */}
+            {aiLoading && !aiSuggestion && (
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground animate-pulse">
+                <Sparkles className="h-3 w-3 text-[#4FC3F7]" />
+                <span>AI is thinking…</span>
+              </div>
+            )}
+            {aiSuggestion && !form.watch("category_id") && (
+              <div className="flex items-center gap-2 rounded-md bg-[#4FC3F7]/10 border border-[#4FC3F7]/30 px-3 py-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-[#4FC3F7] flex-shrink-0" />
+                <span className="text-xs text-foreground flex-1">
+                  <span className="text-muted-foreground">AI suggests: </span>
+                  <strong>{aiSuggestion.category_name}</strong>
+                  {aiSuggestion.confidence === "low" && (
+                    <span className="text-muted-foreground ml-1">(low confidence)</span>
+                  )}
+                </span>
+                <button
+                  type="button"
+                  onClick={acceptAiSuggestion}
+                  className="text-xs font-medium text-[#4FC3F7] hover:text-[#29B6F6] transition-colors"
+                >
+                  Accept
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAiSuggestion(null)}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label="Dismiss suggestion"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Subcategory */}

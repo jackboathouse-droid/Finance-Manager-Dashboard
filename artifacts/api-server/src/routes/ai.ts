@@ -26,26 +26,32 @@ function getOpenAI(): OpenAI {
   return _openai;
 }
 
-// ── In-memory rate limiter: max 10 calls per user per hour ────────────────────
+// ── In-memory rate limiters ────────────────────────────────────────────────────
+// Separate maps for insights (10/hour) and categorisation (60/hour).
 
-const rateLimitMap = new Map<number, number[]>();
+const insightsRateLimitMap = new Map<number, number[]>();
+const categoriseRateLimitMap = new Map<number, number[]>();
 
-function checkRateLimit(userId: number): { allowed: boolean; retryAfterSec?: number } {
-  const now = Date.now();
-  const windowMs = 60 * 60 * 1000;
-  const maxCalls = 10;
+function makeRateLimitChecker(map: Map<number, number[]>, maxCalls: number) {
+  return function checkRateLimit(userId: number): { allowed: boolean; retryAfterSec?: number } {
+    const now = Date.now();
+    const windowMs = 60 * 60 * 1000;
 
-  const calls = (rateLimitMap.get(userId) ?? []).filter((ts) => now - ts < windowMs);
-  if (calls.length >= maxCalls) {
-    const oldest = calls[0];
-    const retryAfterSec = Math.ceil((oldest + windowMs - now) / 1000);
-    return { allowed: false, retryAfterSec };
-  }
+    const calls = (map.get(userId) ?? []).filter((ts) => now - ts < windowMs);
+    if (calls.length >= maxCalls) {
+      const oldest = calls[0];
+      const retryAfterSec = Math.ceil((oldest + windowMs - now) / 1000);
+      return { allowed: false, retryAfterSec };
+    }
 
-  calls.push(now);
-  rateLimitMap.set(userId, calls);
-  return { allowed: true };
+    calls.push(now);
+    map.set(userId, calls);
+    return { allowed: true };
+  };
 }
+
+const checkInsightsRateLimit = makeRateLimitChecker(insightsRateLimitMap, 10);
+const checkCategoriseRateLimit = makeRateLimitChecker(categoriseRateLimitMap, 60);
 
 // ── Date range helpers ────────────────────────────────────────────────────────
 
@@ -75,7 +81,7 @@ router.post("/ai/insights", async (req, res) => {
     if (!userId) return res.status(401).json({ error: "Authentication required." });
 
     // Rate limit check
-    const rl = checkRateLimit(userId);
+    const rl = checkInsightsRateLimit(userId);
     if (!rl.allowed) {
       return res.status(429).json({
         error: `Rate limit reached. You can refresh insights again in ${Math.ceil((rl.retryAfterSec ?? 3600) / 60)} minutes.`,
@@ -268,6 +274,107 @@ STRICT RULES:
   } catch (err: unknown) {
     req.log.error(err);
     res.status(500).json({ error: "Failed to generate insights. Please try again later." });
+  }
+});
+
+// ── POST /api/ai/categorise ───────────────────────────────────────────────────
+// Suggests the best category for a transaction given description + amount + type.
+// Returns { category_id, category_name, confidence } or null on failure/unavailability.
+
+router.post("/ai/categorise", async (req, res) => {
+  try {
+    const userId = req.session?.userId;
+    if (!userId) return res.status(401).json({ error: "Authentication required." });
+
+    const rl = checkCategoriseRateLimit(userId);
+    if (!rl.allowed) {
+      return res.status(429).json({ error: "Rate limit reached.", retryAfterSec: rl.retryAfterSec });
+    }
+
+    const { description, amount, type } = req.body as {
+      description?: string;
+      amount?: number;
+      type?: string;
+    };
+
+    if (!description || description.trim().length < 2) {
+      return res.json(null);
+    }
+
+    // Fetch the user's categories (scoped to transaction type if provided)
+    const userCategories = await db
+      .select({ id: categoriesTable.id, name: categoriesTable.name, type: categoriesTable.type })
+      .from(categoriesTable)
+      .where(
+        type && type !== "transfer"
+          ? and(eq(categoriesTable.user_id, userId), eq(categoriesTable.type, type))
+          : eq(categoriesTable.user_id, userId)
+      );
+
+    if (userCategories.length === 0) return res.json(null);
+
+    // Build a numbered list of categories for the prompt
+    const categoryList = userCategories
+      .map((c) => `${c.id}: ${c.name}`)
+      .join("\n");
+
+    const systemPrompt = `You are a personal finance categorisation engine.
+Given a transaction description and optional amount, pick the SINGLE best matching category from the list.
+Respond with ONLY a valid JSON object: {"category_id": <number>, "confidence": <"high"|"medium"|"low">}
+No explanations, no markdown, no extra text.`;
+
+    const userMessage = `Transaction: "${description.trim()}"${amount !== undefined ? ` | Amount: $${Math.abs(amount)}` : ""}${type ? ` | Type: ${type}` : ""}
+
+Categories:
+${categoryList}
+
+Return the best match as JSON.`;
+
+    let openaiClient: OpenAI;
+    try {
+      openaiClient = getOpenAI();
+    } catch {
+      return res.json(null);
+    }
+
+    let rawContent = "";
+    try {
+      const completion = await openaiClient.chat.completions.create({
+        model: "gpt-5.2",
+        max_completion_tokens: 64,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMessage },
+        ],
+      });
+      rawContent = completion.choices[0]?.message?.content?.trim() ?? "";
+    } catch {
+      return res.json(null);
+    }
+
+    // Parse response
+    let parsed: { category_id?: number; confidence?: string } = {};
+    try {
+      // Strip markdown code fences if present
+      const clean = rawContent.replace(/^```[a-z]*\n?/i, "").replace(/\n?```$/i, "").trim();
+      parsed = JSON.parse(clean);
+    } catch {
+      return res.json(null);
+    }
+
+    if (!parsed.category_id || typeof parsed.category_id !== "number") return res.json(null);
+
+    const matched = userCategories.find((c) => c.id === parsed.category_id);
+    if (!matched) return res.json(null);
+
+    return res.json({
+      category_id: matched.id,
+      category_name: matched.name,
+      confidence: parsed.confidence ?? "medium",
+    });
+  } catch (err) {
+    req.log.error(err);
+    return res.json(null);
   }
 });
 

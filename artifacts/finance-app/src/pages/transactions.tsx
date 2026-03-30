@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { format } from "date-fns";
 import {
   useGetTransactions,
@@ -8,6 +8,7 @@ import {
   useImportTransactions,
   Transaction,
   GetTransactionsType,
+  Category,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatCurrency, cn } from "@/lib/utils";
@@ -31,9 +32,40 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Upload, Edit2, Trash2, X } from "lucide-react";
+import { Plus, Upload, Edit2, Trash2, X, Sparkles, Loader2 } from "lucide-react";
 import { TransactionForm } from "@/components/forms/transaction-form";
 import { Badge } from "@/components/ui/badge";
+
+// ── CSV import types ──────────────────────────────────────────────────────────
+
+interface CsvRow {
+  date: string;
+  description: string;
+  account_id: string;
+  amount: string;
+  person: string;
+  type: string;
+  category_id?: string;
+  subcategory_id?: string;
+  // AI-suggested category (pre-filled, user-overridable)
+  ai_category_id?: string;
+  ai_category_name?: string;
+  ai_loading?: boolean;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function parseCsv(raw: string): CsvRow[] {
+  const lines = raw.trim().split("\n").filter((l) => l.trim());
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
+  return lines.slice(1).map((line) => {
+    const values = line.split(",").map((v) => v.trim().replace(/^"|"$/g, ""));
+    const row: Record<string, string> = {};
+    headers.forEach((h, i) => { row[h] = values[i] ?? ""; });
+    return row as CsvRow;
+  });
+}
 
 export default function Transactions() {
   const [month, setMonth] = useState<string>("");
@@ -46,11 +78,15 @@ export default function Transactions() {
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [csvData, setCsvData] = useState("");
 
+  // CSV import preview state
+  const [previewRows, setPreviewRows] = useState<CsvRow[]>([]);
+  const [aiRunning, setAiRunning] = useState(false);
+
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   const { data: accounts } = useGetAccounts();
-  const { data: categories } = useGetCategories();
+  const { data: categories = [] as Category[] } = useGetCategories();
 
   const { data: transactions, isLoading } = useGetTransactions({
     month: month || undefined,
@@ -112,7 +148,116 @@ export default function Transactions() {
     }
   };
 
-  const handleImport = () => {
+  // ── CSV Preview + AI categorisation ────────────────────────────────────────
+
+  const runAiOnRows = useCallback(async (rows: CsvRow[]) => {
+    setAiRunning(true);
+    const updated = [...rows];
+
+    for (let i = 0; i < updated.length; i++) {
+      const row = updated[i];
+      // Skip if already has a category or is a transfer
+      if (row.category_id || row.type === "transfer" || !row.description) continue;
+
+      // Mark as loading
+      updated[i] = { ...row, ai_loading: true };
+      setPreviewRows([...updated]);
+
+      try {
+        const res = await fetch("/api/ai/categorise", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            description: row.description,
+            amount: row.amount ? Math.abs(parseFloat(row.amount)) : undefined,
+            type: row.type || "expense",
+          }),
+        });
+
+        if (res.ok) {
+          const suggestion: { category_id: number; category_name: string } | null = await res.json();
+          if (suggestion) {
+            updated[i] = {
+              ...updated[i],
+              ai_loading: false,
+              ai_category_id: suggestion.category_id.toString(),
+              ai_category_name: suggestion.category_name,
+              // Pre-fill category_id with suggestion (user can override)
+              category_id: suggestion.category_id.toString(),
+            };
+          } else {
+            updated[i] = { ...updated[i], ai_loading: false };
+          }
+        } else {
+          updated[i] = { ...updated[i], ai_loading: false };
+          // 429 rate limit — stop trying more rows
+          if (res.status === 429) break;
+        }
+      } catch {
+        updated[i] = { ...updated[i], ai_loading: false };
+      }
+
+      setPreviewRows([...updated]);
+      // Small delay between calls to avoid rate limit burst
+      if (i < updated.length - 1) await new Promise((r) => setTimeout(r, 200));
+    }
+
+    setAiRunning(false);
+  }, []);
+
+  const handleParseCsv = useCallback(() => {
+    const rows = parseCsv(csvData);
+    if (rows.length === 0) return;
+    setPreviewRows(rows);
+    // Auto-run AI after a short delay
+    setTimeout(() => runAiOnRows(rows), 100);
+  }, [csvData, runAiOnRows]);
+
+  const handlePreviewCategoryChange = useCallback((rowIndex: number, catId: string) => {
+    setPreviewRows((prev) => {
+      const updated = [...prev];
+      updated[rowIndex] = { ...updated[rowIndex], category_id: catId };
+      return updated;
+    });
+  }, []);
+
+  // Build CSV from preview rows and submit
+  const handleImportFromPreview = useCallback(() => {
+    if (previewRows.length === 0) return;
+    const headers = ["date", "description", "account_id", "amount", "person", "type", "category_id", "subcategory_id"];
+    const lines = [
+      headers.join(","),
+      ...previewRows.map((r) =>
+        [r.date, r.description, r.account_id, r.amount, r.person, r.type, r.category_id ?? "", r.subcategory_id ?? ""].join(",")
+      ),
+    ];
+    const csv = lines.join("\n");
+
+    importMutation.mutate(
+      { data: { csv_data: csv } },
+      {
+        onSuccess: (result) => {
+          queryClient.invalidateQueries({ queryKey: ["/api/transactions"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/dashboard/summary"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/accounts"] });
+          toast({
+            title: "Import complete",
+            description: `Imported ${result.imported} transactions. ${result.errors.length} errors.`,
+          });
+          setIsImportOpen(false);
+          setCsvData("");
+          setPreviewRows([]);
+        },
+        onError: (err: unknown) => {
+          const msg = err instanceof Error ? err.message : "Invalid CSV format";
+          toast({ title: "Import failed", description: msg, variant: "destructive" });
+        },
+      }
+    );
+  }, [previewRows, importMutation, queryClient, toast]);
+
+  const handleImportDirect = useCallback(() => {
     if (!csvData) return;
     importMutation.mutate(
       { data: { csv_data: csvData } },
@@ -127,17 +272,15 @@ export default function Transactions() {
           });
           setIsImportOpen(false);
           setCsvData("");
+          setPreviewRows([]);
         },
-        onError: (err: any) => {
-          toast({
-            title: "Import failed",
-            description: err.message || "Invalid CSV format",
-            variant: "destructive",
-          });
+        onError: (err: unknown) => {
+          const msg = err instanceof Error ? err.message : "Invalid CSV format";
+          toast({ title: "Import failed", description: msg, variant: "destructive" });
         },
       }
     );
-  };
+  }, [csvData, importMutation, queryClient, toast]);
 
   const colSpan = showingByAccount ? 7 : 6;
 
@@ -155,7 +298,7 @@ export default function Transactions() {
         <div className="flex gap-2 w-full sm:w-auto">
           <Button
             variant="outline"
-            onClick={() => setIsImportOpen(true)}
+            onClick={() => { setIsImportOpen(true); setPreviewRows([]); setCsvData(""); }}
             className="flex-1 sm:flex-none"
           >
             <Upload className="mr-2 h-4 w-4" /> Import CSV
@@ -227,7 +370,7 @@ export default function Transactions() {
               Type
             </Label>
             <div className="flex items-center gap-2">
-              <Select value={type} onValueChange={(val: any) => setType(val)}>
+              <Select value={type} onValueChange={(val) => setType(val as GetTransactionsType | "all")}>
                 <SelectTrigger className="h-9 bg-background text-sm flex-1">
                   <SelectValue placeholder="All types" />
                 </SelectTrigger>
@@ -458,44 +601,168 @@ export default function Transactions() {
       </Dialog>
 
       {/* Import CSV Dialog */}
-      <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
-        <DialogContent className="sm:max-w-[520px]">
+      <Dialog open={isImportOpen} onOpenChange={(open) => {
+        setIsImportOpen(open);
+        if (!open) { setCsvData(""); setPreviewRows([]); }
+      }}>
+        <DialogContent className="sm:max-w-[720px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Import Transactions from CSV</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div className="bg-muted/40 rounded-lg p-3 text-xs text-muted-foreground space-y-1">
-              <p className="font-semibold text-foreground">Required CSV columns:</p>
-              <p className="font-mono">
-                date, description, account_id, amount, person, type
-              </p>
-              <p className="font-semibold text-foreground mt-2">Optional columns:</p>
-              <p className="font-mono">category_id, subcategory_id</p>
-              <p className="mt-2">
-                • <code>type</code>: income | expense | transfer
-              </p>
-              <p>• Expenses should have negative amounts</p>
+
+          {previewRows.length === 0 ? (
+            /* ── Step 1: Paste CSV ──────────────────────────────────────── */
+            <div className="space-y-4 pt-2">
+              <div className="bg-muted/40 rounded-lg p-3 text-xs text-muted-foreground space-y-1">
+                <p className="font-semibold text-foreground">Required CSV columns:</p>
+                <p className="font-mono">date, description, account_id, amount, person, type</p>
+                <p className="font-semibold text-foreground mt-2">Optional columns:</p>
+                <p className="font-mono">category_id, subcategory_id</p>
+                <p className="mt-2">• <code>type</code>: income | expense | transfer</p>
+                <p>• Expenses should have negative amounts</p>
+                <p className="flex items-center gap-1 mt-1 text-[#4FC3F7]">
+                  <Sparkles className="h-3 w-3" />
+                  Categories will be suggested automatically by AI
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Paste CSV Data
+                </Label>
+                <textarea
+                  className="flex min-h-[180px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none"
+                  placeholder={"date,description,account_id,amount,person,type\n2024-03-01,Groceries,1,-65.50,John,expense"}
+                  value={csvData}
+                  onChange={(e) => setCsvData(e.target.value)}
+                />
+              </div>
+              <div className="flex justify-end gap-3">
+                <Button variant="outline" onClick={() => setIsImportOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleParseCsv}
+                  disabled={!csvData.trim()}
+                >
+                  <Sparkles className="mr-2 h-4 w-4" /> Preview & Auto-Categorise
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={handleImportDirect}
+                  disabled={!csvData || importMutation.isPending}
+                  title="Import without preview or AI categorisation"
+                >
+                  {importMutation.isPending ? "Importing…" : "Import Directly"}
+                </Button>
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Paste CSV Data
-              </Label>
-              <textarea
-                className="flex min-h-[180px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none"
-                placeholder={"date,description,account_id,amount,person,type\n2024-03-01,Groceries,1,-65.50,John,expense"}
-                value={csvData}
-                onChange={(e) => setCsvData(e.target.value)}
-              />
+          ) : (
+            /* ── Step 2: Preview table with AI suggestions ──────────────── */
+            <div className="space-y-4 pt-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm text-muted-foreground">
+                    {previewRows.length} rows parsed
+                  </p>
+                  {aiRunning && (
+                    <span className="flex items-center gap-1.5 text-xs text-[#4FC3F7] animate-pulse">
+                      <Sparkles className="h-3 w-3" />
+                      AI categorising…
+                    </span>
+                  )}
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-muted-foreground"
+                  onClick={() => setPreviewRows([])}
+                >
+                  ← Back to paste
+                </Button>
+              </div>
+
+              <div className="border border-border/50 rounded-lg overflow-hidden">
+                <div className="overflow-x-auto max-h-[45vh]">
+                  <table className="w-full text-xs">
+                    <thead className="bg-muted/40 sticky top-0 z-10">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-semibold text-muted-foreground uppercase tracking-wider">Date</th>
+                        <th className="px-3 py-2 text-left font-semibold text-muted-foreground uppercase tracking-wider">Description</th>
+                        <th className="px-3 py-2 text-left font-semibold text-muted-foreground uppercase tracking-wider">Amount</th>
+                        <th className="px-3 py-2 text-left font-semibold text-muted-foreground uppercase tracking-wider">
+                          <span className="flex items-center gap-1">
+                            <Sparkles className="h-3 w-3 text-[#4FC3F7]" /> Category
+                          </span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/30">
+                      {previewRows.map((row, i) => (
+                        <tr key={i} className="hover:bg-muted/10">
+                          <td className="px-3 py-2 text-muted-foreground tabular-nums">{row.date}</td>
+                          <td className="px-3 py-2 max-w-[180px]">
+                            <div className="truncate font-medium">{row.description}</div>
+                            <div className="text-muted-foreground">{row.person}</div>
+                          </td>
+                          <td className={cn(
+                            "px-3 py-2 tabular-nums font-mono",
+                            parseFloat(row.amount) < 0 ? "text-red-500" : "text-emerald-600"
+                          )}>
+                            {formatCurrency(Math.abs(parseFloat(row.amount) || 0))}
+                          </td>
+                          <td className="px-3 py-2 min-w-[180px]">
+                            {row.ai_loading ? (
+                              <span className="flex items-center gap-1 text-muted-foreground animate-pulse">
+                                <Loader2 className="h-3 w-3 animate-spin" /> thinking…
+                              </span>
+                            ) : (
+                              <div className="space-y-0.5">
+                                <Select
+                                  value={row.category_id ?? "none"}
+                                  onValueChange={(val) => handlePreviewCategoryChange(i, val === "none" ? "" : val)}
+                                >
+                                  <SelectTrigger className="h-7 text-xs border-border/50">
+                                    <SelectValue placeholder="No category" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="none">No category</SelectItem>
+                                    {categories
+                                      .filter((c) => !row.type || row.type === "transfer" || c.type === row.type)
+                                      .map((cat) => (
+                                        <SelectItem key={cat.id} value={cat.id.toString()}>
+                                          {cat.name}
+                                        </SelectItem>
+                                      ))}
+                                  </SelectContent>
+                                </Select>
+                                {row.ai_category_id && row.category_id === row.ai_category_id && (
+                                  <span className="flex items-center gap-0.5 text-[10px] text-[#4FC3F7]">
+                                    <Sparkles className="h-2.5 w-2.5" /> AI suggested
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <Button variant="outline" onClick={() => setIsImportOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleImportFromPreview}
+                  disabled={importMutation.isPending || aiRunning}
+                >
+                  {importMutation.isPending ? "Importing…" : `Import ${previewRows.length} Transactions`}
+                </Button>
+              </div>
             </div>
-            <div className="flex justify-end gap-3">
-              <Button variant="outline" onClick={() => setIsImportOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleImport} disabled={!csvData || importMutation.isPending}>
-                {importMutation.isPending ? "Importing…" : "Run Import"}
-              </Button>
-            </div>
-          </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
