@@ -12,6 +12,7 @@ import {
   subcategoriesTable,
   peopleTable,
   projectsTable,
+  userSettingsTable,
 } from "@workspace/db";
 import { eq, count, inArray } from "drizzle-orm";
 import { sql } from "drizzle-orm";
@@ -570,6 +571,11 @@ router.get("/auth/export", async (req, res) => {
       .from(peopleTable)
       .where(eq(peopleTable.user_id, userId));
 
+    const [userSettings] = await db
+      .select()
+      .from(userSettingsTable)
+      .where(eq(userSettingsTable.user_id, userId));
+
     // Categories and subcategories used in this user's transactions/budgets
     const usedCategoryIds = [
       ...new Set(
@@ -600,6 +606,7 @@ router.get("/auth/export", async (req, res) => {
     const exportData = {
       exported_at: new Date().toISOString(),
       user: { id: user?.id, email: user?.email, full_name: user?.full_name, created_at: user?.created_at },
+      user_settings: userSettings ?? null,
       accounts,
       transactions,
       budgets,
