@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { format } from "date-fns";
 import {
   useGetTransactions,
@@ -81,6 +81,7 @@ export default function Transactions() {
   // CSV import preview state
   const [previewRows, setPreviewRows] = useState<CsvRow[]>([]);
   const [aiRunning, setAiRunning] = useState(false);
+  const aiLoopActiveRef = useRef(false);
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -151,10 +152,14 @@ export default function Transactions() {
   // ── CSV Preview + AI categorisation ────────────────────────────────────────
 
   const runAiOnRows = useCallback(async (rows: CsvRow[]) => {
+    aiLoopActiveRef.current = true;
     setAiRunning(true);
     const updated = [...rows];
 
     for (let i = 0; i < updated.length; i++) {
+      // Cancellation guard: stop if dialog was closed
+      if (!aiLoopActiveRef.current) break;
+
       const row = updated[i];
       // Skip if already has a category or is a transfer
       if (row.category_id || row.type === "transfer" || !row.description) continue;
@@ -175,15 +180,18 @@ export default function Transactions() {
           }),
         });
 
+        // Check cancellation after await
+        if (!aiLoopActiveRef.current) break;
+
         if (res.ok) {
           const suggestion: { category_id: number; category_name: string } | null = await res.json();
+          if (!aiLoopActiveRef.current) break;
           if (suggestion) {
             updated[i] = {
               ...updated[i],
               ai_loading: false,
               ai_category_id: suggestion.category_id.toString(),
               ai_category_name: suggestion.category_name,
-              // Pre-fill category_id with suggestion (user can override)
               category_id: suggestion.category_id.toString(),
             };
           } else {
@@ -198,11 +206,12 @@ export default function Transactions() {
         updated[i] = { ...updated[i], ai_loading: false };
       }
 
-      setPreviewRows([...updated]);
+      if (aiLoopActiveRef.current) setPreviewRows([...updated]);
       // Small delay between calls to avoid rate limit burst
       if (i < updated.length - 1) await new Promise((r) => setTimeout(r, 200));
     }
 
+    aiLoopActiveRef.current = false;
     setAiRunning(false);
   }, []);
 
@@ -603,7 +612,11 @@ export default function Transactions() {
       {/* Import CSV Dialog */}
       <Dialog open={isImportOpen} onOpenChange={(open) => {
         setIsImportOpen(open);
-        if (!open) { setCsvData(""); setPreviewRows([]); }
+        if (!open) {
+          aiLoopActiveRef.current = false;
+          setCsvData("");
+          setPreviewRows([]);
+        }
       }}>
         <DialogContent className="sm:max-w-[720px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>

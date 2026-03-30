@@ -98,6 +98,7 @@ export function TransactionForm({
   const [aiLoading, setAiLoading] = useState(false);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastFetchedDescRef = useRef<string>("");
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Dismiss suggestion when user manually picks a category
   const handleCategorySelect = useCallback((val: string) => {
@@ -120,6 +121,11 @@ export function TransactionForm({
     if (trimmed === lastFetchedDescRef.current) return;
 
     debounceTimerRef.current = setTimeout(async () => {
+      // Abort any previous in-flight request to prevent stale result overwrites
+      if (abortControllerRef.current) abortControllerRef.current.abort();
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
       lastFetchedDescRef.current = trimmed;
       setAiLoading(true);
       try {
@@ -129,14 +135,18 @@ export function TransactionForm({
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ description: trimmed, amount: absAmount, type }),
+          signal: controller.signal,
         });
         if (!response.ok) { setAiSuggestion(null); return; }
         const data: AiSuggestion | null = await response.json();
         setAiSuggestion(data);
-      } catch {
-        setAiSuggestion(null);
+      } catch (err) {
+        // Ignore AbortError (request was superseded by a newer one)
+        if (err instanceof Error && err.name !== "AbortError") {
+          setAiSuggestion(null);
+        }
       } finally {
-        setAiLoading(false);
+        if (!controller.signal.aborted) setAiLoading(false);
       }
     }, 600);
 
